@@ -1,0 +1,9 @@
+HublinkNode_ESP32	KEYWORD1
+initBLE	KEYWORD2
+updateConnectionStatus	KEYWORD2
+handleFileTransfer	KEYWORD2
+sendAvailableFilenames	KEYWORD2
+isValidFile	KEYWORD2
+setBLECallbacks	KEYWORD2
+deviceConnected	KEYWORD2
+fileTransferInProgress	KEYWORD2
