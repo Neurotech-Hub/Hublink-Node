@@ -8,7 +8,7 @@ HublinkNode_ESP32 is an Arduino library designed to facilitate Bluetooth Low Ene
 - Easy integration with user-defined callbacks for customization.
 
 ## Installation
-1. Download the library from the [GitHub repository](https://github.com/neurotechhub/HublinkNode_ESP32).
+1. Download the library from the [GitHub repository](https://github.com/Neurotech-Hub/HublinkNode_ESP32).
 2. Place the `HublinkNode_ESP32` folder into your Arduino libraries directory.
 3. Restart the Arduino IDE if it is already open.
 
