@@ -1,4 +1,4 @@
-#include "HublinkNode_ESP32.h"
+#include <HublinkNode_ESP32.h>
 #include <SPI.h>
 #include <SD.h>
 
@@ -14,11 +14,16 @@ class CustomServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
         Serial.println("Device connected");
         hublinkNode.deviceConnected = true;
+        hublinkNode.watchdogTimer = millis();
+        BLEDevice::setMTU(512);
     }
 
     void onDisconnect(BLEServer* pServer) {
         Serial.println("Device disconnected");
         hublinkNode.deviceConnected = false;
+        hublinkNode.piReadyForFilenames = false;
+        hublinkNode.fileTransferInProgress = false;
+        hublinkNode.allFilesSent = false;
         BLEDevice::getAdvertising()->start();
         Serial.println("Restarting BLE advertising...");
     }

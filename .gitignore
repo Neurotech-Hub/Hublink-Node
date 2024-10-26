@@ -1,0 +1,95 @@
+# Compiled object files, ELF binaries, and hex files
+*.o
+*.elf
+*.bin
+*.hex
+
+# Temporary build files
+*.log
+*.tmp
+*.d
+*.dep
+*.a
+
+# Sketchbook folders created by Arduino IDE
+*.sketch
+
+# Precompiled library files and archives
+*.a
+*.so
+*.dll
+*.dylib
+
+# Arduino core and library files generated during builds
+/core/
+*.cpp.o
+*.c.o
+*.S.o
+*.lst
+
+# Arduino intermediate build folder (depending on Arduino IDE version)
+build*/
+
+# Output files from the Arduino IDE
+*.eep
+*.map
+*.sym
+
+# Cache files used by the Arduino IDE
+*.h.gch
+*.h.gch.d
+
+# Temporary files from the Arduino IDE and related tools
+*~
+*.bak
+*.swp
+
+# Files generated during board uploads
+upload.hex
+upload.bin
+
+# macOS specific files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# macOS generated resource forks and other metadata
+._*
+
+# Windows specific files
+Thumbs.db
+ehthumbs.db
+
+# IDE-specific files (VS Code, PlatformIO, etc.)
+.vscode/
+*.code-workspace
+*.ide
+*.workspace
+.platformio/
+.pio/
+*.piolibdeps
+
+# User-specific settings
+*.user
+
+# Arduino configuration files
+*.eeprom
+*.pro
+*.ctags
+
+# Arduino build cache and local preferences (common Arduino locations)
+**/Arduino15/
+**/.arduino/
+*.preferences.txt
+
+# Folders and files for hardware packages or board definitions that change often
+packages/
+staging/
+
+# Arduino library source code files
+libraries/*/src/
+libraries/*/examples/
+libraries/*/extras/
+libraries/*/test/
+
+# Node.js depe

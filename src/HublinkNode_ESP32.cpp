@@ -2,7 +2,7 @@
 #include "HublinkNode_ESP32.h"
 
 HublinkNode_ESP32::HublinkNode_ESP32() :
-    connectionID(0), piReadyForFilenames(false), deviceConnected(false),
+    piReadyForFilenames(false), deviceConnected(false),
     fileTransferInProgress(false), currentFileName(""), allFilesSent(false),
     watchdogTimer(0) {}
 
@@ -37,11 +37,12 @@ void HublinkNode_ESP32::updateConnectionStatus() {
     // Watchdog timer
     if (deviceConnected && (millis() - watchdogTimer > WATCHDOG_TIMEOUT_MS)) {
         Serial.println("Watchdog timeout detected, disconnecting...");
-        pServer->disconnect(connectionID);
+        pServer->disconnect(pServer->getConnId());
     }
 }
 
 void HublinkNode_ESP32::sendAvailableFilenames() {
+    mtuSize = BLEDevice::getMTU();
     File root = SD.open("/");
     while (deviceConnected) {
         watchdogTimer = millis();  // Reset watchdog timer
@@ -73,6 +74,7 @@ void HublinkNode_ESP32::sendAvailableFilenames() {
 }
 
 void HublinkNode_ESP32::handleFileTransfer(String fileName) {
+    mtuSize = BLEDevice::getMTU();
     File file = SD.open("/" + fileName);
     if (!file) {
         Serial.printf("Failed to open file: %s\n", fileName.c_str());
