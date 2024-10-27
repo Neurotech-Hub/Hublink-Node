@@ -15,7 +15,7 @@
 class HublinkNode_ESP32 {
 public:
     HublinkNode_ESP32();
-    void initBLE();
+    void initBLE(String advName);
     void updateConnectionStatus();
     void handleFileTransfer(String fileName);
     void sendAvailableFilenames();

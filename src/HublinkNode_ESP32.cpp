@@ -6,9 +6,9 @@ HublinkNode_ESP32::HublinkNode_ESP32() :
     fileTransferInProgress(false), currentFileName(""), allFilesSent(false),
     watchdogTimer(0) {}
 
-void HublinkNode_ESP32::initBLE() {
+void HublinkNode_ESP32::initBLE(String advName) {
     // Initialize BLE
-    BLEDevice::init("ESP32_BLE_SD");
+    BLEDevice::init(advName);
     pServer = BLEDevice::createServer();
 
     BLEService *pService = pServer->createService(SERVICE_UUID);
@@ -24,7 +24,6 @@ void HublinkNode_ESP32::initBLE() {
     pFileTransferCharacteristic->addDescriptor(new BLE2902());
 
     pService->start();
-    BLEDevice::getAdvertising()->start();
     Serial.println("BLE advertising started.");
 }
 
