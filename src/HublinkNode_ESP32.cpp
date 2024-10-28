@@ -24,7 +24,7 @@ void HublinkNode_ESP32::initBLE(String advName) {
     pFileTransferCharacteristic->addDescriptor(new BLE2902());
 
     pService->start();
-    Serial.println("BLE advertising started.");
+    onDisconnect(); // clear all vars and notification flags
 }
 
 void HublinkNode_ESP32::setBLECallbacks(BLEServerCallbacks* serverCallbacks, BLECharacteristicCallbacks* filenameCallbacks) {
@@ -38,10 +38,25 @@ void HublinkNode_ESP32::updateConnectionStatus() {
         Serial.println("Watchdog timeout detected, disconnecting...");
         pServer->disconnect(pServer->getConnId());
     }
+
+    if (deviceConnected && fileTransferInProgress && currentFileName != "") {
+        Serial.printf("Requested file: %s\n", currentFileName);
+        handleFileTransfer(currentFileName);
+        currentFileName = "";
+        fileTransferInProgress = false;
+    }
+
+    // value=1 for notifications, =2 for indications
+    if (deviceConnected && !fileTransferInProgress && !allFilesSent && (pFilenameCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902))->getValue()[0] & 0x0F) > 0) {
+        Serial.println("Sending filenames...");
+        sendAvailableFilenames();
+    }
 }
 
 void HublinkNode_ESP32::sendAvailableFilenames() {
     mtuSize = BLEDevice::getMTU();
+    Serial.print("MTU Size (negotiated): ");
+    Serial.println(mtuSize);
     File root = SD.open("/");
     while (deviceConnected) {
         watchdogTimer = millis();  // Reset watchdog timer
@@ -56,6 +71,7 @@ void HublinkNode_ESP32::sendAvailableFilenames() {
 
         String fileName = entry.name();
         if (isValidFile(fileName)) {
+            Serial.println(fileName);
             String fileInfo = fileName + "|" + String(entry.size());
             int index = 0;
             while (index < fileInfo.length() && deviceConnected) {
@@ -107,4 +123,24 @@ bool HublinkNode_ESP32::isValidFile(String fileName) {
         }
     }
     return false;
+}
+
+// HublinkNode_ESP32.cpp
+void HublinkNode_ESP32::onConnect() {
+    Serial.println("Device connected");
+    deviceConnected = true;
+    watchdogTimer = millis();
+    BLEDevice::setMTU(512);
+}
+
+void HublinkNode_ESP32::onDisconnect() {
+    Serial.println("Device disconnected");
+    if (pFilenameCharacteristic) {
+        uint8_t disableNotifyValue[2] = {0x00, 0x00};  // 0x00 to disable notifications
+        pFilenameCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902))->setValue(disableNotifyValue, 2);
+    }
+    deviceConnected = false;
+    piReadyForFilenames = false;
+    fileTransferInProgress = false;
+    allFilesSent = false;
 }

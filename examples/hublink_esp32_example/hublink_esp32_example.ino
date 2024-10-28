@@ -10,32 +10,23 @@ const int cs = 10;
 
 HublinkNode_ESP32 hublinkNode;
 
-class CustomServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
-    Serial.println("Device connected");
-    BLEDevice::getAdvertising()->stop();
-    hublinkNode.deviceConnected = true;
-    hublinkNode.watchdogTimer = millis();
-    BLEDevice::setMTU(512);
+class ServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) override {
+    hublinkNode.onConnect();
   }
 
-  void onDisconnect(BLEServer* pServer) {
-    Serial.println("Device disconnected");
-    hublinkNode.deviceConnected = false;
-    hublinkNode.piReadyForFilenames = false;
-    hublinkNode.fileTransferInProgress = false;
-    hublinkNode.allFilesSent = false;
-    BLEDevice::getAdvertising()->start();
+  void onDisconnect(BLEServer* pServer) override {
+    hublinkNode.onDisconnect();
     Serial.println("Restarting BLE advertising...");
+    BLEDevice::getAdvertising()->start();
   }
 };
 
-class CustomFilenameCallback : public BLECharacteristicCallbacks {
+class FilenameCallback : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pCharacteristic) {
-    String rxValue = String(pCharacteristic->getValue().c_str());
-    Serial.printf("Requested file: %s\n", rxValue.c_str());
-    if (rxValue != "") {
-      hublinkNode.handleFileTransfer(rxValue);
+    hublinkNode.currentFileName = String(pCharacteristic->getValue().c_str());
+    if (hublinkNode.currentFileName != "") {
+      hublinkNode.fileTransferInProgress = true;
     }
   }
 };
@@ -44,6 +35,7 @@ void setup() {
   // Initialize serial for debugging
   Serial.begin(115200);
   delay(2000);  // Allow time for serial initialization
+  Serial.println("Hello, hublink node.");
 
   // Setup SD card manually in user sketch
   SPI.begin(sck, miso, mosi, cs);
@@ -54,10 +46,10 @@ void setup() {
   Serial.println("SD Card initialized.");
 
   hublinkNode.initBLE("ESP32_BLE_SD");
-  BLEDevice::getAdvertising()->start();  // or ->stop();
-
   // Set custom BLE callbacks
-  hublinkNode.setBLECallbacks(new CustomServerCallbacks(), new CustomFilenameCallback());
+  hublinkNode.setBLECallbacks(new ServerCallbacks(), new FilenameCallback());
+  BLEDevice::getAdvertising()->start();  // or ->stop();
+  Serial.println("BLE advertising started.");
 }
 
 void loop() {
@@ -65,9 +57,9 @@ void loop() {
   hublinkNode.updateConnectionStatus();
 
   // If device is connected, send available filenames
-  if (hublinkNode.deviceConnected && !hublinkNode.fileTransferInProgress) {
-    hublinkNode.sendAvailableFilenames();
-  }
+  // if (hublinkNode.deviceConnected && !hublinkNode.fileTransferInProgress) {
+  //   hublinkNode.sendAvailableFilenames();
+  // }
 
-  delay(100);  // Avoid busy waiting
+  delay(200);  // Avoid busy waiting
 }

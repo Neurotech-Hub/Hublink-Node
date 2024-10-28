@@ -20,27 +20,26 @@ public:
     void handleFileTransfer(String fileName);
     void sendAvailableFilenames();
     bool isValidFile(String fileName);
-
+    void onConnect();
+    void onDisconnect();
     void setBLECallbacks(BLEServerCallbacks* serverCallbacks, BLECharacteristicCallbacks* filenameCallbacks);
+    String currentFileName;
+    bool fileTransferInProgress;
 
 private:
     BLECharacteristic *pFilenameCharacteristic;
     BLECharacteristic *pFileTransferCharacteristic;
     BLEServer *pServer;
 
-    String currentFileName;
     String macAddress;
+    bool piReadyForFilenames;
+    bool deviceConnected;
+    bool allFilesSent;
+    unsigned long watchdogTimer;
 
     uint16_t mtuSize = 20;
     const uint16_t WATCHDOG_TIMEOUT_MS = 5000;
     String validExtensions[3] = { ".txt", ".csv", ".log" };
-
-public:
-    bool piReadyForFilenames;
-    bool deviceConnected;
-    bool fileTransferInProgress;
-    bool allFilesSent;
-    unsigned long watchdogTimer;
 };
 
 #endif
