@@ -40,7 +40,8 @@ void HublinkNode_ESP32::updateConnectionStatus() {
     }
 
     if (deviceConnected && fileTransferInProgress && currentFileName != "") {
-        Serial.printf("Requested file: %s\n", currentFileName);
+        Serial.print("Requested file: ");
+        Serial.println(currentFileName);
         handleFileTransfer(currentFileName);
         currentFileName = "";
         fileTransferInProgress = false;
@@ -48,15 +49,15 @@ void HublinkNode_ESP32::updateConnectionStatus() {
 
     // value=1 for notifications, =2 for indications
     if (deviceConnected && !fileTransferInProgress && !allFilesSent && (pFilenameCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902))->getValue()[0] & 0x0F) > 0) {
+        updateMtuSize(); // after negotiation
+        Serial.print("MTU Size (negotiated): ");
+        Serial.println(mtuSize);
         Serial.println("Sending filenames...");
         sendAvailableFilenames();
     }
 }
 
 void HublinkNode_ESP32::sendAvailableFilenames() {
-    mtuSize = BLEDevice::getMTU();
-    Serial.print("MTU Size (negotiated): ");
-    Serial.println(mtuSize);
     File root = SD.open("/");
     while (deviceConnected) {
         watchdogTimer = millis();  // Reset watchdog timer
@@ -89,7 +90,6 @@ void HublinkNode_ESP32::sendAvailableFilenames() {
 }
 
 void HublinkNode_ESP32::handleFileTransfer(String fileName) {
-    mtuSize = BLEDevice::getMTU();
     File file = SD.open("/" + fileName);
     if (!file) {
         Serial.printf("Failed to open file: %s\n", fileName.c_str());
@@ -130,7 +130,7 @@ void HublinkNode_ESP32::onConnect() {
     Serial.println("Device connected");
     deviceConnected = true;
     watchdogTimer = millis();
-    BLEDevice::setMTU(512);
+    BLEDevice::setMTU(NEGOTIATE_MTU_SIZE);
 }
 
 void HublinkNode_ESP32::onDisconnect() {
@@ -143,4 +143,8 @@ void HublinkNode_ESP32::onDisconnect() {
     piReadyForFilenames = false;
     fileTransferInProgress = false;
     allFilesSent = false;
+}
+
+void HublinkNode_ESP32::updateMtuSize() {
+    mtuSize = BLEDevice::getMTU() - MTU_HEADER_SIZE;
 }

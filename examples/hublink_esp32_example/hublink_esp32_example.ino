@@ -61,5 +61,5 @@ void loop() {
   //   hublinkNode.sendAvailableFilenames();
   // }
 
-  delay(200);  // Avoid busy waiting
+  delay(100);  // Avoid busy waiting
 }

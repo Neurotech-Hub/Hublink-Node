@@ -22,6 +22,7 @@ public:
     bool isValidFile(String fileName);
     void onConnect();
     void onDisconnect();
+    void updateMtuSize();
     void setBLECallbacks(BLEServerCallbacks* serverCallbacks, BLECharacteristicCallbacks* filenameCallbacks);
     String currentFileName;
     bool fileTransferInProgress;
@@ -37,7 +38,9 @@ private:
     bool allFilesSent;
     unsigned long watchdogTimer;
 
-    uint16_t mtuSize = 20;
+    uint16_t mtuSize = 20; // negotiate for higher
+    const uint16_t NEGOTIATE_MTU_SIZE = 512;
+    const uint16_t MTU_HEADER_SIZE = 3;
     const uint16_t WATCHDOG_TIMEOUT_MS = 5000;
     String validExtensions[3] = { ".txt", ".csv", ".log" };
 };
