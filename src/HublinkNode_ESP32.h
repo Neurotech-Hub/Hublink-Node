@@ -26,6 +26,7 @@ public:
     void setBLECallbacks(BLEServerCallbacks* serverCallbacks, BLECharacteristicCallbacks* filenameCallbacks);
     String currentFileName;
     bool fileTransferInProgress;
+    bool deviceConnected;
 
 private:
     BLECharacteristic *pFilenameCharacteristic;
@@ -34,7 +35,6 @@ private:
 
     String macAddress;
     bool piReadyForFilenames;
-    bool deviceConnected;
     bool allFilesSent;
     unsigned long watchdogTimer;
 

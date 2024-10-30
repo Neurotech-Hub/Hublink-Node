@@ -125,7 +125,6 @@ bool HublinkNode_ESP32::isValidFile(String fileName) {
     return false;
 }
 
-// HublinkNode_ESP32.cpp
 void HublinkNode_ESP32::onConnect() {
     Serial.println("Device connected");
     deviceConnected = true;
