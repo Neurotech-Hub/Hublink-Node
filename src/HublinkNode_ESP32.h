@@ -15,13 +15,11 @@
 class HublinkNode_ESP32 {
 public:
     HublinkNode_ESP32();
-    void initBLE(String advName, bool trackFiles = false);
+    void initBLE(String advName);
     void updateConnectionStatus();
     void handleFileTransfer(String fileName);
     void sendAvailableFilenames();
     bool isValidFile(String fileName);
-    bool fileInHubLink(String fileName);
-    void markFileAsSent(String fileName);
     void onConnect();
     void onDisconnect();
     void updateMtuSize();
@@ -29,7 +27,6 @@ public:
     String currentFileName;
     bool fileTransferInProgress;
     bool deviceConnected;
-    String validExtensions[3] = { ".txt", ".csv", ".log" };
 
 private:
     BLECharacteristic *pFilenameCharacteristic;
@@ -39,13 +36,13 @@ private:
     String macAddress;
     bool piReadyForFilenames;
     bool allFilesSent;
-    bool trackTransferredFiles;
     unsigned long watchdogTimer;
 
     uint16_t mtuSize = 20; // negotiate for higher
     const uint16_t NEGOTIATE_MTU_SIZE = 512;
     const uint16_t MTU_HEADER_SIZE = 3;
     const uint16_t WATCHDOG_TIMEOUT_MS = 5000;
+    String validExtensions[3] = { ".txt", ".csv", ".log" };
 };
 
 #endif

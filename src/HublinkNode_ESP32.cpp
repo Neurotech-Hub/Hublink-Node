@@ -1,16 +1,12 @@
 // HublinkNode_ESP32.cpp
 #include "HublinkNode_ESP32.h"
 
-const char* HUBLINK_FILENAME = "/files.hub";
-
 HublinkNode_ESP32::HublinkNode_ESP32() :
     piReadyForFilenames(false), deviceConnected(false),
     fileTransferInProgress(false), currentFileName(""), allFilesSent(false),
-    watchdogTimer(0), trackTransferredFiles(false) {}
+    watchdogTimer(0) {}
 
-void HublinkNode_ESP32::initBLE(String advName, bool trackFiles) {
-    trackTransferredFiles = trackFiles;
-
+void HublinkNode_ESP32::initBLE(String advName) {
     // Initialize BLE
     BLEDevice::init(advName);
     pServer = BLEDevice::createServer();
@@ -75,7 +71,7 @@ void HublinkNode_ESP32::sendAvailableFilenames() {
         }
 
         String fileName = entry.name();
-        if (isValidFile(fileName) && (!trackTransferredFiles || !fileInHubLink(fileName))) {
+        if (isValidFile(fileName)) {
             Serial.println(fileName);
             String fileInfo = fileName + "|" + String(entry.size());
             int index = 0;
@@ -150,48 +146,4 @@ void HublinkNode_ESP32::onDisconnect() {
 
 void HublinkNode_ESP32::updateMtuSize() {
     mtuSize = BLEDevice::getMTU() - MTU_HEADER_SIZE;
-}
-
-bool HublinkNode_ESP32::fileInHubLink(String fileName) {
-    if (!SD.exists(HUBLINK_FILENAME)) {
-        Serial.println("files.hub does not exist, assuming no files have been sent.");
-        return false;
-    }
-
-    File hublinkFile = SD.open(HUBLINK_FILENAME, FILE_READ);
-    if (!hublinkFile) {
-        Serial.println("Failed to open files.hub.");
-        return false;
-    }
-
-    while (hublinkFile.available()) {
-        String line = hublinkFile.readStringUntil('\n');
-        if (line == fileName) {
-            hublinkFile.close();
-            return true;
-        }
-    }
-    hublinkFile.close();
-    return false;
-}
-
-void HublinkNode_ESP32::markFileAsSent(String fileName) {
-    // Create the file if it doesn't exist
-    if (!SD.exists(HUBLINK_FILENAME)) {
-        Serial.println("Creating files.hub...");
-        File hublinkFile = SD.open(HUBLINK_FILENAME, FILE_WRITE);
-        if (!hublinkFile) {
-            Serial.println("Failed to create files.hub.");
-            return;
-        }
-        hublinkFile.close();
-    }
-
-    File hublinkFile = SD.open(HUBLINK_FILENAME, FILE_APPEND);
-    if (!hublinkFile) {
-        Serial.println("Failed to open files.hub for writing.");
-        return;
-    }
-    hublinkFile.println(fileName);
-    hublinkFile.close();
 }
