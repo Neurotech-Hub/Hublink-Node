@@ -27,6 +27,7 @@ public:
     String currentFileName;
     bool fileTransferInProgress;
     bool deviceConnected;
+    String validExtensions[3] = { ".txt", ".csv", ".log" };
 
 private:
     BLECharacteristic *pFilenameCharacteristic;
@@ -42,7 +43,6 @@ private:
     const uint16_t NEGOTIATE_MTU_SIZE = 512;
     const uint16_t MTU_HEADER_SIZE = 3;
     const uint16_t WATCHDOG_TIMEOUT_MS = 5000;
-    String validExtensions[3] = { ".txt", ".csv", ".log" };
 };
 
 #endif

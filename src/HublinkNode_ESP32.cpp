@@ -59,13 +59,21 @@ void HublinkNode_ESP32::updateConnectionStatus() {
 
 void HublinkNode_ESP32::sendAvailableFilenames() {
     File root = SD.open("/");
+    String accumulatedFileInfo = "";  // Accumulate file info here
     while (deviceConnected) {
         watchdogTimer = millis();  // Reset watchdog timer
         File entry = root.openNextFile();
         if (!entry) {
             Serial.println("All filenames sent.");
-            pFilenameCharacteristic->setValue("EOF");
-            pFilenameCharacteristic->indicate();
+            accumulatedFileInfo += "EOF";  // Add end marker
+            int index = 0;
+            while (index < accumulatedFileInfo.length() && deviceConnected) {
+                watchdogTimer = millis();
+                String chunk = accumulatedFileInfo.substring(index, index + mtuSize);
+                pFilenameCharacteristic->setValue(chunk.c_str());
+                pFilenameCharacteristic->indicate();
+                index += mtuSize;
+            }
             allFilesSent = true;
             break;
         }
@@ -74,16 +82,10 @@ void HublinkNode_ESP32::sendAvailableFilenames() {
         if (isValidFile(fileName)) {
             Serial.println(fileName);
             String fileInfo = fileName + "|" + String(entry.size());
-            int index = 0;
-            while (index < fileInfo.length() && deviceConnected) {
-                watchdogTimer = millis();
-                String chunk = fileInfo.substring(index, index + mtuSize);
-                pFilenameCharacteristic->setValue(chunk.c_str());
-                pFilenameCharacteristic->indicate();
-                index += mtuSize;
+            if (!accumulatedFileInfo.isEmpty()) {
+                accumulatedFileInfo += ";";  // Separate entries with a semicolon
             }
-            pFilenameCharacteristic->setValue("EON");
-            pFilenameCharacteristic->indicate();
+            accumulatedFileInfo += fileInfo;
         }
     }
     root.close();

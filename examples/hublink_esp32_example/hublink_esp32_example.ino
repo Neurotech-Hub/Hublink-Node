@@ -3,10 +3,10 @@
 #include <SD.h>
 
 // Pins for SD card
-const int sck = 12;
-const int miso = 13;
-const int mosi = 11;
-const int cs = 10;
+const int mosi = 35;
+const int sck = 36;
+const int miso = 37;
+const int cs = A0;
 
 HublinkNode_ESP32 hublinkNode;
 
