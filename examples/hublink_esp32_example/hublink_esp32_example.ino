@@ -2,11 +2,14 @@
 #include <SPI.h>
 #include <SD.h>
 
+const bool TRACK_FILES_SENT = true;
+const String BLE_AVD_NAME = "ESP32_BLE_SD";
+
 // Pins for SD card
-const int sck = 12;
-const int miso = 13;
-const int mosi = 11;
-const int cs = 10;
+const int mosi = 35;
+const int sck = 36;
+const int miso = 37;
+const int cs = A0;
 
 HublinkNode_ESP32 hublinkNode;
 
@@ -45,7 +48,7 @@ void setup() {
   }
   Serial.println("SD Card initialized.");
 
-  hublinkNode.initBLE("ESP32_BLE_SD");
+  hublinkNode.initBLE(BLE_AVD_NAME, TRACK_FILES_SENT);
   // Set custom BLE callbacks
   hublinkNode.setBLECallbacks(new ServerCallbacks(), new FilenameCallback());
   BLEDevice::getAdvertising()->start();  // or ->stop();
@@ -55,11 +58,6 @@ void setup() {
 void loop() {
   // Update connection status and handle watchdog timeout
   hublinkNode.updateConnectionStatus();
-
-  // If device is connected, send available filenames
-  // if (hublinkNode.deviceConnected && !hublinkNode.fileTransferInProgress) {
-  //   hublinkNode.sendAvailableFilenames();
-  // }
 
   delay(100);  // Avoid busy waiting
 }
