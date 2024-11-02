@@ -65,7 +65,6 @@ void HublinkNode_ESP32::sendAvailableFilenames() {
         File entry = root.openNextFile();
         if (!entry) {
             Serial.println("All filenames sent.");
-            accumulatedFileInfo += "EOF";  // Add end marker
             int index = 0;
             while (index < accumulatedFileInfo.length() && deviceConnected) {
                 watchdogTimer = millis();
@@ -74,6 +73,9 @@ void HublinkNode_ESP32::sendAvailableFilenames() {
                 pFilenameCharacteristic->indicate();
                 index += mtuSize;
             }
+            // Send "EOF" as a separate indication to signal the end
+            pFilenameCharacteristic->setValue("EOF");
+            pFilenameCharacteristic->indicate();
             allFilesSent = true;
             break;
         }
