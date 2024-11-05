@@ -1,7 +1,7 @@
-// HublinkNode_ESP32.cpp
 #include "HublinkNode_ESP32.h"
 
-HublinkNode_ESP32::HublinkNode_ESP32() :
+HublinkNode_ESP32::HublinkNode_ESP32(uint8_t chipSelect, uint32_t clockFrequency) :
+    cs(chipSelect), clkFreq(clockFrequency),
     piReadyForFilenames(false), deviceConnected(false),
     fileTransferInProgress(false), currentFileName(""), allFilesSent(false),
     watchdogTimer(0) {}
@@ -25,6 +25,11 @@ void HublinkNode_ESP32::initBLE(String advName) {
 
     pService->start();
     onDisconnect(); // clear all vars and notification flags
+}
+
+// Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
+bool HublinkNode_ESP32::initializeSD() {
+    return SD.begin(cs, SPI, clkFreq);
 }
 
 void HublinkNode_ESP32::setBLECallbacks(BLEServerCallbacks* serverCallbacks, BLECharacteristicCallbacks* filenameCallbacks) {
@@ -58,6 +63,11 @@ void HublinkNode_ESP32::updateConnectionStatus() {
 }
 
 void HublinkNode_ESP32::sendAvailableFilenames() {
+    if (!initializeSD()) {
+        Serial.println("Failed to initialize SD card");
+        return;
+    }
+    
     File root = SD.open("/");
     String accumulatedFileInfo = "";  // Accumulate file info here
     while (deviceConnected) {
@@ -94,6 +104,12 @@ void HublinkNode_ESP32::sendAvailableFilenames() {
 }
 
 void HublinkNode_ESP32::handleFileTransfer(String fileName) {
+    // Begin SD communication with updated parameters
+    if (!initializeSD()) {
+        Serial.println("Failed to initialize SD card");
+        return;
+    }
+
     File file = SD.open("/" + fileName);
     if (!file) {
         Serial.printf("Failed to open file: %s\n", fileName.c_str());
@@ -130,14 +146,14 @@ bool HublinkNode_ESP32::isValidFile(String fileName) {
 }
 
 void HublinkNode_ESP32::onConnect() {
-    Serial.println("Device connected");
+    Serial.println("Hublink node connected.");
     deviceConnected = true;
     watchdogTimer = millis();
     BLEDevice::setMTU(NEGOTIATE_MTU_SIZE);
 }
 
 void HublinkNode_ESP32::onDisconnect() {
-    Serial.println("Device disconnected");
+    Serial.println("Hublink node reset.");
     if (pFilenameCharacteristic) {
         uint8_t disableNotifyValue[2] = {0x00, 0x00};  // 0x00 to disable notifications
         pFilenameCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902))->setValue(disableNotifyValue, 2);

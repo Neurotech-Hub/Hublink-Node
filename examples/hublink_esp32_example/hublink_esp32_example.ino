@@ -8,6 +8,7 @@ const int sck = 36;
 const int miso = 37;
 const int cs = A0;
 
+// --- HUBLINK HEADER START --- //
 HublinkNode_ESP32 hublinkNode;
 
 class ServerCallbacks : public BLEServerCallbacks {
@@ -30,10 +31,11 @@ class FilenameCallback : public BLECharacteristicCallbacks {
     }
   }
 };
+// --- HUBLINK HEADER END --- //
 
 void setup() {
   // Initialize serial for debugging
-  Serial.begin(115200);
+  Serial.begin(9600);
   delay(2000);  // Allow time for serial initialization
   Serial.println("Hello, hublink node.");
 
@@ -45,21 +47,17 @@ void setup() {
   }
   Serial.println("SD Card initialized.");
 
+  // --- HUBLINK SETUP START --- //
   hublinkNode.initBLE("ESP32_BLE_SD");
-  // Set custom BLE callbacks
   hublinkNode.setBLECallbacks(new ServerCallbacks(), new FilenameCallback());
-  BLEDevice::getAdvertising()->start();  // or ->stop();
-  Serial.println("BLE advertising started.");
+  BLEDevice::getAdvertising()->start();  // USE CASE DEPENDENT or ->stop();
+  // --- HUBLINK SETUP END --- //
+
+  Serial.println("BLE setup done, looping....");
 }
 
 void loop() {
-  // Update connection status and handle watchdog timeout
-  hublinkNode.updateConnectionStatus();
-
-  // If device is connected, send available filenames
-  // if (hublinkNode.deviceConnected && !hublinkNode.fileTransferInProgress) {
-  //   hublinkNode.sendAvailableFilenames();
-  // }
+  hublinkNode.updateConnectionStatus(); // Update connection and watchdog timeout
 
   delay(100);  // Avoid busy waiting
 }

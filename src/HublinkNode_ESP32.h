@@ -14,7 +14,7 @@
 
 class HublinkNode_ESP32 {
 public:
-    HublinkNode_ESP32();
+    HublinkNode_ESP32(uint8_t chipSelect, uint32_t clockFrequency);
     void initBLE(String advName);
     void updateConnectionStatus();
     void handleFileTransfer(String fileName);
@@ -24,6 +24,8 @@ public:
     void onDisconnect();
     void updateMtuSize();
     void setBLECallbacks(BLEServerCallbacks* serverCallbacks, BLECharacteristicCallbacks* filenameCallbacks);
+    bool initializeSD();
+    
     String currentFileName;
     bool fileTransferInProgress;
     bool deviceConnected;
@@ -43,6 +45,10 @@ private:
     const uint16_t NEGOTIATE_MTU_SIZE = 512;
     const uint16_t MTU_HEADER_SIZE = 3;
     const uint16_t WATCHDOG_TIMEOUT_MS = 5000;
+
+    // SD card configuration
+    uint8_t cs;
+    uint32_t clkFreq;
 };
 
 #endif

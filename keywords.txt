@@ -1,4 +1,4 @@
-HublinkNode_ESP32	KEYWORD1
+Hublink-Node_ESP32	KEYWORD1
 initBLE	KEYWORD2
 updateConnectionStatus	KEYWORD2
 handleFileTransfer	KEYWORD2
