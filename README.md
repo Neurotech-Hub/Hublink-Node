@@ -1,4 +1,4 @@
-# HublinkNode_ESP32
+# Hublink-Node_ESP32
 
 HublinkNode_ESP32 is an Arduino library designed to facilitate Bluetooth Low Energy (BLE) communication and SD card file transfer for ESP32-based nodes.
 
