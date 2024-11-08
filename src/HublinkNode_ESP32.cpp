@@ -135,8 +135,16 @@ void HublinkNode_ESP32::handleFileTransfer(String fileName) {
 }
 
 bool HublinkNode_ESP32::isValidFile(String fileName) {
+    // Exclude files that start with a dot
+    if (fileName.startsWith(".")) {
+        return false;
+    }
+
+    // Convert filename to lowercase
     String lowerFileName = fileName;
     lowerFileName.toLowerCase();
+
+    // Check for valid extensions
     for (int i = 0; i < 3; i++) {
         if (lowerFileName.endsWith(validExtensions[i])) {
             return true;

@@ -44,7 +44,7 @@ private:
     uint16_t mtuSize = 20; // negotiate for higher
     const uint16_t NEGOTIATE_MTU_SIZE = 512;
     const uint16_t MTU_HEADER_SIZE = 3;
-    const uint16_t WATCHDOG_TIMEOUT_MS = 5000;
+    const uint16_t WATCHDOG_TIMEOUT_MS = 10000;
 
     // SD card configuration
     uint8_t cs;

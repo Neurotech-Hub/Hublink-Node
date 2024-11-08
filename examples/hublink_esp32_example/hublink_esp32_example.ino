@@ -3,9 +3,6 @@
 #include <SD.h>
 
 // Pins for SD card
-const int mosi = 35;
-const int sck = 36;
-const int miso = 37;
 const int cs = A0;
 
 // --- HUBLINK HEADER START --- //
@@ -40,7 +37,7 @@ void setup() {
   Serial.println("Hello, hublink node.");
 
   // Setup SD card manually in user sketch
-  SPI.begin(sck, miso, mosi, cs);
+  SPI.begin(SCK, MISO, MOSI, cs);
   while (!SD.begin(cs, SPI, 1000000)) {
     Serial.println("SD Card initialization failed!");
     delay(500);
