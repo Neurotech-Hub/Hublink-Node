@@ -5,7 +5,7 @@
 const int cs = A0;
 
 // ======== HUBLINK_HEADER_START ========
-HublinkNode_ESP32 hublinkNode(cs, 1000000);
+HublinkNode_ESP32 hublinkNode(cs);  // optional (cs, clkFreq) parameters
 unsigned long lastBleEntryTime = 0; // Tracks the last time we entered the BLE sub-loop
 
 class ServerCallbacks : public BLEServerCallbacks
