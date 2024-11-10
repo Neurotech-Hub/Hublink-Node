@@ -11,10 +11,13 @@
 #define SERVICE_UUID "57617368-5501-0001-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID_FILENAME "57617368-5502-0001-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID_FILETRANSFER "57617368-5503-0001-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID_CONFIG "57617368-5504-0001-8000-00805f9b34fb"
 
-class HublinkNode_ESP32 {
+class HublinkNode_ESP32
+{
 public:
-    HublinkNode_ESP32(uint8_t chipSelect, uint32_t clockFrequency);
+    // Constructor with default values for SD card configuration
+    HublinkNode_ESP32(uint8_t chipSelect = SS, uint32_t clockFrequency = 1000000);
     void initBLE(String advName);
     void updateConnectionStatus();
     void handleFileTransfer(String fileName);
@@ -23,17 +26,41 @@ public:
     void onConnect();
     void onDisconnect();
     void updateMtuSize();
-    void setBLECallbacks(BLEServerCallbacks* serverCallbacks, BLECharacteristicCallbacks* filenameCallbacks);
+    void setBLECallbacks(BLEServerCallbacks *serverCallbacks,
+                         BLECharacteristicCallbacks *filenameCallbacks,
+                         BLECharacteristicCallbacks *configCallbacks);
     bool initializeSD();
-    
+    /**
+     * Parse configuration data from BLE characteristic
+     * @param pCharacteristic BLE characteristic containing config data
+     * @param key Key to search for in config string
+     * @return Value associated with key, or empty string if not found
+     *
+     * Config format: key1=value1;key2=value2;key3=value3
+     * Example: BLE_CONNECT_EVERY=300;BLE_CONNECT_FOR=30;rtc=2024-03-21 14:30:00
+     */
+    String parseConfig(BLECharacteristic *pCharacteristic, const String &key);
+
     String currentFileName;
     bool fileTransferInProgress;
     bool deviceConnected;
-    String validExtensions[3] = { ".txt", ".csv", ".log" };
+    String validExtensions[3] = {".txt", ".csv", ".log"};
+    /**
+     * Flag indicating if configuration has been received via BLE.
+     * When true, triggers the sending of available filenames to connected client.
+     */
+    bool configChanged;
+
+    // Time between BLE advertising periods (in seconds)
+    uint32_t bleConnectEvery = 300; // 5 minutes
+
+    // How long to keep BLE active each time (in seconds)
+    uint32_t bleConnectFor = 30; // 30 seconds
 
 private:
     BLECharacteristic *pFilenameCharacteristic;
     BLECharacteristic *pFileTransferCharacteristic;
+    BLECharacteristic *pConfigCharacteristic;
     BLEServer *pServer;
 
     String macAddress;
@@ -49,6 +76,11 @@ private:
     // SD card configuration
     uint8_t cs;
     uint32_t clkFreq;
+
+    // Store callback pointers for cleanup
+    BLEServerCallbacks *serverCallbacks = nullptr;
+    BLECharacteristicCallbacks *filenameCallbacks = nullptr;
+    BLECharacteristicCallbacks *configCallbacks = nullptr;
 };
 
 #endif
