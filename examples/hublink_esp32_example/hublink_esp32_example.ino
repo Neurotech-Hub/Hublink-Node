@@ -18,8 +18,6 @@ class ServerCallbacks : public BLEServerCallbacks
   void onDisconnect(BLEServer *pServer) override
   {
     hublinkNode.onDisconnect();
-    Serial.println("Restarting BLE advertising...");
-    BLEDevice::getAdvertising()->start();
   }
 };
 
@@ -35,35 +33,22 @@ class FilenameCallback : public BLECharacteristicCallbacks
   }
 };
 
-class ConfigCallback : public BLECharacteristicCallbacks
+class GatewayCallback : public BLECharacteristicCallbacks
 {
   void onWrite(BLECharacteristic *pCharacteristic) override
   {
-    String bleConnectEvery = hublinkNode.parseConfig(pCharacteristic, "BLE_CONNECT_EVERY");
-    String bleConnectFor = hublinkNode.parseConfig(pCharacteristic, "BLE_CONNECT_FOR");
-    String rtc = hublinkNode.parseConfig(pCharacteristic, "rtc");
+    String rtc = hublinkNode.parseGateway(pCharacteristic, "rtc");
 
-    // Only set configChanged if we got valid values
-    if (bleConnectEvery.length() > 0 || bleConnectFor.length() > 0 || rtc.length() > 0)
+    // Only set gatewayChanged if we got valid values
+    if (rtc.length() > 0)
     {
-      hublinkNode.configChanged = true;
-      Serial.println("Config changed received:");
-      if (bleConnectEvery.length() > 0)
-      {
-        hublinkNode.bleConnectEvery = bleConnectEvery.toInt();
-        Serial.println("BLE_CONNECT_EVERY: " + String(hublinkNode.bleConnectEvery));
-      }
-      if (bleConnectFor.length() > 0)
-      {
-        hublinkNode.bleConnectFor = bleConnectFor.toInt();
-        Serial.println("BLE_CONNECT_FOR: " + String(hublinkNode.bleConnectFor));
-      }
-      if (rtc.length() > 0)
-        Serial.println("rtc: " + rtc);
+      hublinkNode.gatewayChanged = true; // true for any change, triggers sending available filenames
+      Serial.println("Gateway settings received:");
+      Serial.println("rtc: " + rtc);
     }
     else
     {
-      Serial.println("No valid config values found");
+      Serial.println("No valid gateway settings found");
     }
   }
 };
@@ -97,26 +82,31 @@ void enterBleSubLoop()
 
 void setup()
 {
-  // Initialize serial for debugging
   Serial.begin(9600);
-  delay(2000); // Allow time for serial initialization
+  delay(2000);
   Serial.println("Hello, hublink node.");
 
-  // Setup SD card manually in user sketch
+  // Setup SD card with proper pin definitions
   SPI.begin(SCK, MISO, MOSI, cs);
-  while (!SD.begin(cs, SPI, 1000000))
+  if (!SD.begin(cs, SPI, 1000000))
   {
     Serial.println("SD Card initialization failed!");
-    delay(500);
+    while (1)
+    { // Optional: halt if SD fails
+      Serial.println("Retrying SD init...");
+      if (SD.begin(cs, SPI, 1000000))
+        break;
+      delay(1000);
+    }
   }
   Serial.println("SD Card initialized.");
 
   // ======== HUBLINK_SETUP_START ========
-  hublinkNode.initBLE("ESP32_BLE_SD");
+  hublinkNode.initBLE("ESP32_BLE_SD"); // !! make optional from hublink.node file
   hublinkNode.setBLECallbacks(new ServerCallbacks(),
                               new FilenameCallback(),
-                              new ConfigCallback());
-  BLEDevice::getAdvertising()->start();
+                              new GatewayCallback());
+  hublinkNode.setNodeChar();
   // ======== HUBLINK_SETUP_END ========
 
   Serial.println("BLE setup done, looping....");
@@ -127,8 +117,8 @@ void loop()
   // ======== HUBLINK_LOOP_START ========
   unsigned long currentTime = millis();
 
-  // Check if it's time to enter the BLE sub-loop
-  if (currentTime - lastBleEntryTime >= hublinkNode.bleConnectEvery * 1000)
+  // Check if it's time to enter the BLE sub-loop and not disabled
+  if (!hublinkNode.disable && currentTime - lastBleEntryTime >= hublinkNode.bleConnectEvery * 1000)
   {
     enterBleSubLoop();
     lastBleEntryTime = millis();

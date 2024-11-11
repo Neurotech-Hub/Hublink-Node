@@ -3,7 +3,7 @@
 HublinkNode_ESP32::HublinkNode_ESP32(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), clkFreq(clockFrequency),
                                                                                     piReadyForFilenames(false), deviceConnected(false),
                                                                                     fileTransferInProgress(false), currentFileName(""), allFilesSent(false),
-                                                                                    watchdogTimer(0), configChanged(false) {}
+                                                                                    watchdogTimer(0), gatewayChanged(false) {}
 
 void HublinkNode_ESP32::initBLE(String advName)
 {
@@ -24,8 +24,12 @@ void HublinkNode_ESP32::initBLE(String advName)
     pFileTransferCharacteristic->addDescriptor(new BLE2902());
 
     pConfigCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_CONFIG,
+        CHARACTERISTIC_UUID_GATEWAY,
         BLECharacteristic::PROPERTY_WRITE);
+
+    pNodeCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_NODE,
+        BLECharacteristic::PROPERTY_READ);
 
     pService->start();
     onDisconnect(); // clear all vars and notification flags
@@ -34,7 +38,12 @@ void HublinkNode_ESP32::initBLE(String advName)
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
 bool HublinkNode_ESP32::initializeSD()
 {
-    return SD.begin(cs, SPI, clkFreq);
+    if (!SD.begin(cs, SPI, clkFreq))
+    {
+        Serial.println("Failed to initialize SD in Hublink library");
+        return false;
+    }
+    return true;
 }
 
 void HublinkNode_ESP32::setBLECallbacks(BLEServerCallbacks *serverCallbacks,
@@ -72,7 +81,7 @@ void HublinkNode_ESP32::updateConnectionStatus()
 
     // value=1 for notifications, =2 for indications
     // (pFilenameCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902))->getValue()[0] & 0x0F) > 0
-    if (deviceConnected && !fileTransferInProgress && !allFilesSent && configChanged)
+    if (deviceConnected && !fileTransferInProgress && !allFilesSent && gatewayChanged)
     {
         updateMtuSize(); // after negotiation
         Serial.print("MTU Size (negotiated): ");
@@ -211,6 +220,7 @@ void HublinkNode_ESP32::onDisconnect()
     piReadyForFilenames = false;
     fileTransferInProgress = false;
     allFilesSent = false;
+    gatewayChanged = false;
 
     // Clean up callbacks if they exist
     if (serverCallbacks)
@@ -235,9 +245,9 @@ void HublinkNode_ESP32::updateMtuSize()
     mtuSize = BLEDevice::getMTU() - MTU_HEADER_SIZE;
 }
 
-String HublinkNode_ESP32::parseConfig(BLECharacteristic *pCharacteristic, const String &key)
+String HublinkNode_ESP32::parseGateway(BLECharacteristic *pCharacteristic, const String &key)
 {
-    std::string value = pCharacteristic->getValue();
+    std::string value = pCharacteristic->getValue().c_str();
     if (value.empty())
     {
         Serial.println("Config: Empty characteristic value");
@@ -283,4 +293,101 @@ String HublinkNode_ESP32::parseConfig(BLECharacteristic *pCharacteristic, const 
     }
 
     return "";
+}
+
+void HublinkNode_ESP32::setNodeChar()
+{
+    if (!initializeSD())
+    {
+        Serial.println("Failed to initialize SD card when setting node characteristic");
+        pNodeCharacteristic->setValue("");
+        return;
+    }
+
+    File nodeFile = SD.open("/hublink.node", FILE_READ);
+    if (!nodeFile)
+    {
+        Serial.println("No hublink.node file found");
+        pNodeCharacteristic->setValue("");
+        return;
+    }
+
+    String nodeContent = "";
+    String currentLine = "";
+
+    // Initialize disable to false before parsing file
+    disable = false;
+
+    while (nodeFile.available())
+    {
+        char c = nodeFile.read();
+        if (c == '\n' || c == '\r')
+        {
+            processLine(currentLine, nodeContent);
+            currentLine = "";
+        }
+        else
+        {
+            currentLine += c;
+        }
+    }
+
+    // Process the last line even if it doesn't end with a newline
+    if (currentLine.length() > 0)
+    {
+        processLine(currentLine, nodeContent);
+    }
+
+    pNodeCharacteristic->setValue(nodeContent.c_str());
+    Serial.println("Node characteristic set to: " + nodeContent);
+    nodeFile.close();
+}
+
+// Helper function to process each line
+void HublinkNode_ESP32::processLine(const String &line, String &nodeContent)
+{
+    if (line.length() > 0)
+    {
+        // Add to nodeContent with comma separator
+        if (nodeContent.length() > 0)
+        {
+            nodeContent += ",";
+        }
+        nodeContent += line;
+
+        // Parse the line
+        int equalPos = line.indexOf('=');
+        if (equalPos != -1)
+        {
+            String key = line.substring(0, equalPos);
+            String value = line.substring(equalPos + 1);
+
+            if (key == "interval")
+            {
+                int dashPos = value.indexOf('-');
+                if (dashPos != -1)
+                {
+                    String everyStr = value.substring(0, dashPos);
+                    String forStr = value.substring(dashPos + 1);
+
+                    uint32_t newEvery = everyStr.toInt();
+                    uint32_t newFor = forStr.toInt();
+
+                    if (newEvery > 0 && newFor > 0)
+                    {
+                        bleConnectEvery = newEvery;
+                        bleConnectFor = newFor;
+                        Serial.printf("Updated intervals: every=%d, for=%d\n", bleConnectEvery, bleConnectFor);
+                    }
+                }
+            }
+            else if (key == "disable")
+            {
+                String valueLower = value;
+                valueLower.toLowerCase();
+                disable = (valueLower == "true" || value == "1");
+                Serial.printf("BLE disable flag set to: %s\n", disable ? "true" : "false");
+            }
+        }
+    }
 }
