@@ -297,12 +297,14 @@ String HublinkNode_ESP32::parseGateway(BLECharacteristic *pCharacteristic, const
 
 void HublinkNode_ESP32::setNodeChar()
 {
+    Serial.println("Starting setNodeChar()...");
     if (!initializeSD())
     {
         Serial.println("Failed to initialize SD card when setting node characteristic");
         pNodeCharacteristic->setValue("");
         return;
     }
+    Serial.println("SD card initialized successfully");
 
     File nodeFile = SD.open("/hublink.node", FILE_READ);
     if (!nodeFile)
@@ -311,18 +313,21 @@ void HublinkNode_ESP32::setNodeChar()
         pNodeCharacteristic->setValue("");
         return;
     }
+    Serial.println("Successfully opened hublink.node file");
 
     String nodeContent = "";
     String currentLine = "";
 
     // Initialize disable to false before parsing file
     disable = false;
+    Serial.println("Starting to read file contents...");
 
     while (nodeFile.available())
     {
         char c = nodeFile.read();
         if (c == '\n' || c == '\r')
         {
+            Serial.println("Processing line: " + currentLine);
             processLine(currentLine, nodeContent);
             currentLine = "";
         }
@@ -335,12 +340,14 @@ void HublinkNode_ESP32::setNodeChar()
     // Process the last line even if it doesn't end with a newline
     if (currentLine.length() > 0)
     {
+        Serial.println("Processing final line: " + currentLine);
         processLine(currentLine, nodeContent);
     }
 
     pNodeCharacteristic->setValue(nodeContent.c_str());
     Serial.println("Node characteristic set to: " + nodeContent);
     nodeFile.close();
+    Serial.println("Finished setNodeChar()");
 }
 
 // Helper function to process each line
