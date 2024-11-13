@@ -42,9 +42,6 @@ public:
      */
     String parseGateway(BLECharacteristic *pCharacteristic, const String &key);
     void setNodeChar();
-    void startAdvertising();
-    void stopAdvertising();
-    void parseNodeConfig();
 
     String currentFileName;
     bool fileTransferInProgress;
@@ -92,8 +89,6 @@ private:
 
     // Helper function to process lines from hublink.node file
     void processLine(const String &line, String &nodeContent);
-    void parseConfigLine(const String &line);
-    String advName; // Store the advertising name
 };
 
 #endif
