@@ -58,24 +58,32 @@ class GatewayCallback : public BLECharacteristicCallbacks
 void enterBleSubLoop()
 {
   Serial.println("Entering BLE sub-loop.");
-  BLEDevice::getAdvertising()->start();
+
+  // Initialize BLE and start advertising
+  hublinkNode.startAdvertising();
+
+  // Now that BLE is initialized, set up callbacks and node characteristics
+  hublinkNode.setBLECallbacks(new ServerCallbacks(),
+                              new FilenameCallback(),
+                              new GatewayCallback());
+  hublinkNode.setNodeChar();
+
   unsigned long subLoopStartTime = millis();
   bool connectedInitially = false;
 
   while ((millis() - subLoopStartTime < hublinkNode.bleConnectFor * 1000 && !connectedInitially) || hublinkNode.deviceConnected)
   {
-    hublinkNode.updateConnectionStatus(); // Update connection and watchdog timeout
+    hublinkNode.updateConnectionStatus();
 
-    // If the device just connected, mark it as initially connected
     if (hublinkNode.deviceConnected)
     {
       connectedInitially = true;
     }
 
-    delay(100); // Avoid busy waiting
+    delay(100);
   }
 
-  BLEDevice::getAdvertising()->stop();
+  hublinkNode.stopAdvertising();
   Serial.println("Leaving BLE sub-loop.");
 }
 // ======== HUBLINK_BLE_ACCESSORY_END ========

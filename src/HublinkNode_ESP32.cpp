@@ -7,32 +7,8 @@ HublinkNode_ESP32::HublinkNode_ESP32(uint8_t chipSelect, uint32_t clockFrequency
 
 void HublinkNode_ESP32::initBLE(String advName)
 {
-    // Initialize BLE
-    BLEDevice::init(advName);
-    pServer = BLEDevice::createServer();
-
-    BLEService *pService = pServer->createService(SERVICE_UUID);
-
-    pFilenameCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_FILENAME,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
-    pFilenameCharacteristic->addDescriptor(new BLE2902());
-
-    pFileTransferCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_FILETRANSFER,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
-    pFileTransferCharacteristic->addDescriptor(new BLE2902());
-
-    pConfigCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_GATEWAY,
-        BLECharacteristic::PROPERTY_WRITE);
-
-    pNodeCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_NODE,
-        BLECharacteristic::PROPERTY_READ);
-
-    pService->start();
-    onDisconnect(); // clear all vars and notification flags
+    this->advName = advName; // Store the name
+    parseNodeConfig();       // Parse timing parameters during init
 }
 
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
@@ -363,6 +339,127 @@ void HublinkNode_ESP32::processLine(const String &line, String &nodeContent)
         nodeContent += line;
 
         // Parse the line
+        int equalPos = line.indexOf('=');
+        if (equalPos != -1)
+        {
+            String key = line.substring(0, equalPos);
+            String value = line.substring(equalPos + 1);
+
+            if (key == "interval")
+            {
+                int dashPos = value.indexOf('-');
+                if (dashPos != -1)
+                {
+                    String everyStr = value.substring(0, dashPos);
+                    String forStr = value.substring(dashPos + 1);
+
+                    uint32_t newEvery = everyStr.toInt();
+                    uint32_t newFor = forStr.toInt();
+
+                    if (newEvery > 0 && newFor > 0)
+                    {
+                        bleConnectEvery = newEvery;
+                        bleConnectFor = newFor;
+                        Serial.printf("Updated intervals: every=%d, for=%d\n", bleConnectEvery, bleConnectFor);
+                    }
+                }
+            }
+            else if (key == "disable")
+            {
+                String valueLower = value;
+                valueLower.toLowerCase();
+                disable = (valueLower == "true" || value == "1");
+                Serial.printf("BLE disable flag set to: %s\n", disable ? "true" : "false");
+            }
+        }
+    }
+}
+
+void HublinkNode_ESP32::startAdvertising()
+{
+    btStart(); // Turn on BT radio
+    BLEDevice::init(advName);
+    pServer = BLEDevice::createServer();
+
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    pFilenameCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILENAME,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
+    pFilenameCharacteristic->addDescriptor(new BLE2902());
+
+    pFileTransferCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILETRANSFER,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
+    pFileTransferCharacteristic->addDescriptor(new BLE2902());
+
+    pConfigCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_GATEWAY,
+        BLECharacteristic::PROPERTY_WRITE);
+
+    pNodeCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_NODE,
+        BLECharacteristic::PROPERTY_READ);
+
+    pService->start();
+    BLEDevice::getAdvertising()->start();
+    Serial.printf("BLE radio started and advertising as: %s\n", advName.c_str());
+}
+
+void HublinkNode_ESP32::stopAdvertising()
+{
+    BLEDevice::getAdvertising()->stop();
+    BLEDevice::deinit(true); // True to release memory
+    btStop();                // Turn off BT radio
+    Serial.println("BLE radio stopped and advertising ended");
+}
+
+void HublinkNode_ESP32::parseNodeConfig()
+{
+    if (!initializeSD())
+    {
+        Serial.println("Failed to initialize SD card when reading node config");
+        return;
+    }
+
+    File nodeFile = SD.open("/hublink.node", FILE_READ);
+    if (!nodeFile)
+    {
+        Serial.println("No hublink.node file found");
+        return;
+    }
+
+    String currentLine = "";
+    disable = false; // Initialize disable to false
+
+    while (nodeFile.available())
+    {
+        char c = nodeFile.read();
+        if (c == '\n' || c == '\r')
+        {
+            parseConfigLine(currentLine); // Only parse the config, don't build nodeContent
+            currentLine = "";
+        }
+        else
+        {
+            currentLine += c;
+        }
+    }
+
+    // Process the last line
+    if (currentLine.length() > 0)
+    {
+        parseConfigLine(currentLine);
+    }
+
+    nodeFile.close();
+}
+
+// New helper function that only handles config parsing
+void HublinkNode_ESP32::parseConfigLine(const String &line)
+{
+    if (line.length() > 0)
+    {
         int equalPos = line.indexOf('=');
         if (equalPos != -1)
         {
