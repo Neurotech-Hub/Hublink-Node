@@ -1,13 +1,13 @@
-#include <HublinkNode_ESP32.h>
+#include <HublinkNode.h>
 #include <SPI.h>
 #include <SD.h>
 
 const int cs = A0;
 
 // ======== HUBLINK_HEADER_START ========
-HublinkNode_ESP32 hublinkNode(cs);  // optional (cs, clkFreq) parameters
+HublinkNode hublinkNode(cs);        // optional (cs, clkFreq) parameters
 unsigned long lastBleEntryTime = 0; // Tracks the last time we entered the BLE sub-loop
-String advName = "ESP32_BLE_SD";
+String advName = "HUBNODE";
 
 class ServerCallbacks : public BLEServerCallbacks
 {
