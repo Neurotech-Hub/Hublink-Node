@@ -2,13 +2,70 @@
 
 HublinkNode_ESP32::HublinkNode_ESP32(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), clkFreq(clockFrequency),
                                                                                     piReadyForFilenames(false), deviceConnected(false),
-                                                                                    fileTransferInProgress(false), currentFileName(""), allFilesSent(false),
-                                                                                    watchdogTimer(0), gatewayChanged(false) {}
+                                                                                    currentFileName(""), allFilesSent(false),
+                                                                                    watchdogTimer(0), sendFilenames(false) {}
 
-void HublinkNode_ESP32::initBLE(String advName)
+const char *HublinkNode_ESP32::DEFAULT_NAME = "ESP32_BLE_SD";
+
+String HublinkNode_ESP32::setNodeContent()
 {
+    if (!initializeSD())
+    {
+        Serial.println("Failed to initialize SD card when reading node content");
+        return "";
+    }
+
+    File nodeFile = SD.open("/hublink.node", FILE_READ);
+    if (!nodeFile)
+    {
+        Serial.println("No hublink.node file found");
+        return "";
+    }
+
+    String content = "";
+    String currentLine = "";
+    disable = false; // Reset disable flag before parsing
+
+    while (nodeFile.available())
+    {
+        char c = nodeFile.read();
+        if (c == '\n' || c == '\r')
+        {
+            if (currentLine.length() > 0)
+            {
+                processLine(currentLine, content);
+            }
+            currentLine = "";
+        }
+        else
+        {
+            currentLine += c;
+        }
+    }
+
+    if (currentLine.length() > 0)
+    {
+        processLine(currentLine, content);
+    }
+
+    nodeFile.close();
+    return content;
+}
+
+void HublinkNode_ESP32::initBLE(String defaultAdvName, bool allowOverride)
+{
+    // Read node content first
+    nodeContent = setNodeContent();
+
+    // Determine advertising name
+    String advertisingName = defaultAdvName;
+    if (allowOverride && configuredAdvName.length() > 0)
+    {
+        advertisingName = configuredAdvName;
+    }
+
     // Initialize BLE
-    BLEDevice::init(advName);
+    BLEDevice::init(advertisingName);
     pServer = BLEDevice::createServer();
 
     BLEService *pService = pServer->createService(SERVICE_UUID);
@@ -32,7 +89,30 @@ void HublinkNode_ESP32::initBLE(String advName)
         BLECharacteristic::PROPERTY_READ);
 
     pService->start();
-    onDisconnect(); // clear all vars and notification flags
+    resetBLEState();
+    setNodeChar(); // Set node characteristic at the end
+}
+
+void HublinkNode_ESP32::deinitBLE()
+{
+    // Disconnect any active connections
+    if (pServer && deviceConnected)
+    {
+        pServer->disconnect(pServer->getConnId());
+    }
+
+    // Deinitialize BLE stack (handles controller and memory cleanup)
+    BLEDevice::deinit(true);
+}
+
+void HublinkNode_ESP32::startAdvertising()
+{
+    BLEDevice::getAdvertising()->start();
+}
+
+void HublinkNode_ESP32::stopAdvertising()
+{
+    BLEDevice::getAdvertising()->stop();
 }
 
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
@@ -66,24 +146,21 @@ void HublinkNode_ESP32::updateConnectionStatus()
     // Watchdog timer
     if (deviceConnected && (millis() - watchdogTimer > WATCHDOG_TIMEOUT_MS))
     {
-        Serial.println("Watchdog timeout detected, disconnecting...");
+        Serial.println("Hublink node timeout detected, disconnecting...");
         pServer->disconnect(pServer->getConnId());
     }
 
-    if (deviceConnected && fileTransferInProgress && currentFileName != "")
+    if (deviceConnected && !currentFileName.isEmpty())
     {
         Serial.print("Requested file: ");
         Serial.println(currentFileName);
         handleFileTransfer(currentFileName);
         currentFileName = "";
-        fileTransferInProgress = false;
     }
 
-    // value=1 for notifications, =2 for indications
-    // (pFilenameCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902))->getValue()[0] & 0x0F) > 0
-    if (deviceConnected && !fileTransferInProgress && !allFilesSent && gatewayChanged)
+    if (deviceConnected && currentFileName.isEmpty() && !allFilesSent && sendFilenames)
     {
-        updateMtuSize(); // after negotiation
+        updateMtuSize();
         Serial.print("MTU Size (negotiated): ");
         Serial.println(mtuSize);
         Serial.println("Sending filenames...");
@@ -210,34 +287,17 @@ void HublinkNode_ESP32::onConnect()
 
 void HublinkNode_ESP32::onDisconnect()
 {
-    Serial.println("Hublink node reset.");
-    if (pFilenameCharacteristic)
-    {
-        uint8_t disableNotifyValue[2] = {0x00, 0x00}; // 0x00 to disable notifications
-        pFilenameCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902))->setValue(disableNotifyValue, 2);
-    }
+    Serial.println("Hublink node disconnected.");
+    deviceConnected = false;
+}
+
+void HublinkNode_ESP32::resetBLEState()
+{
     deviceConnected = false;
     piReadyForFilenames = false;
-    fileTransferInProgress = false;
+    currentFileName = "";
     allFilesSent = false;
-    gatewayChanged = false;
-
-    // Clean up callbacks if they exist
-    if (serverCallbacks)
-    {
-        delete serverCallbacks;
-        serverCallbacks = nullptr;
-    }
-    if (filenameCallbacks)
-    {
-        delete filenameCallbacks;
-        filenameCallbacks = nullptr;
-    }
-    if (configCallbacks)
-    {
-        delete configCallbacks;
-        configCallbacks = nullptr;
-    }
+    sendFilenames = false;
 }
 
 void HublinkNode_ESP32::updateMtuSize()
@@ -297,57 +357,8 @@ String HublinkNode_ESP32::parseGateway(BLECharacteristic *pCharacteristic, const
 
 void HublinkNode_ESP32::setNodeChar()
 {
-    Serial.println("Starting setNodeChar()...");
-    if (!initializeSD())
-    {
-        Serial.println("Failed to initialize SD card when setting node characteristic");
-        pNodeCharacteristic->setValue("");
-        return;
-    }
-    Serial.println("SD card initialized successfully");
-
-    File nodeFile = SD.open("/hublink.node", FILE_READ);
-    if (!nodeFile)
-    {
-        Serial.println("No hublink.node file found");
-        pNodeCharacteristic->setValue("");
-        return;
-    }
-    Serial.println("Successfully opened hublink.node file");
-
-    String nodeContent = "";
-    String currentLine = "";
-
-    // Initialize disable to false before parsing file
-    disable = false;
-    Serial.println("Starting to read file contents...");
-
-    while (nodeFile.available())
-    {
-        char c = nodeFile.read();
-        if (c == '\n' || c == '\r')
-        {
-            Serial.println("Processing line: " + currentLine);
-            processLine(currentLine, nodeContent);
-            currentLine = "";
-        }
-        else
-        {
-            currentLine += c;
-        }
-    }
-
-    // Process the last line even if it doesn't end with a newline
-    if (currentLine.length() > 0)
-    {
-        Serial.println("Processing final line: " + currentLine);
-        processLine(currentLine, nodeContent);
-    }
-
     pNodeCharacteristic->setValue(nodeContent.c_str());
     Serial.println("Node characteristic set to: " + nodeContent);
-    nodeFile.close();
-    Serial.println("Finished setNodeChar()");
 }
 
 // Helper function to process each line
@@ -355,23 +366,27 @@ void HublinkNode_ESP32::processLine(const String &line, String &nodeContent)
 {
     if (line.length() > 0)
     {
-        // Add to nodeContent with comma separator
+        // Add to nodeContent
         if (nodeContent.length() > 0)
         {
-            nodeContent += ",";
+            nodeContent += ";";
         }
         nodeContent += line;
 
-        // Parse the line
+        // Parse configuration
         int equalPos = line.indexOf('=');
         if (equalPos != -1)
         {
             String key = line.substring(0, equalPos);
             String value = line.substring(equalPos + 1);
 
-            if (key == "interval")
+            if (key == "advertise")
             {
-                int dashPos = value.indexOf('-');
+                configuredAdvName = value;
+            }
+            else if (key == "interval")
+            {
+                int dashPos = value.indexOf(',');
                 if (dashPos != -1)
                 {
                     String everyStr = value.substring(0, dashPos);

@@ -7,6 +7,7 @@ const int cs = A0;
 // ======== HUBLINK_HEADER_START ========
 HublinkNode_ESP32 hublinkNode(cs);  // optional (cs, clkFreq) parameters
 unsigned long lastBleEntryTime = 0; // Tracks the last time we entered the BLE sub-loop
+String advName = "ESP32_BLE_SD";
 
 class ServerCallbacks : public BLEServerCallbacks
 {
@@ -26,10 +27,6 @@ class FilenameCallback : public BLECharacteristicCallbacks
   void onWrite(BLECharacteristic *pCharacteristic)
   {
     hublinkNode.currentFileName = String(pCharacteristic->getValue().c_str());
-    if (hublinkNode.currentFileName != "")
-    {
-      hublinkNode.fileTransferInProgress = true;
-    }
   }
 };
 
@@ -38,47 +35,42 @@ class GatewayCallback : public BLECharacteristicCallbacks
   void onWrite(BLECharacteristic *pCharacteristic) override
   {
     String rtc = hublinkNode.parseGateway(pCharacteristic, "rtc");
-
-    // Only set gatewayChanged if we got valid values
     if (rtc.length() > 0)
     {
-      hublinkNode.gatewayChanged = true; // true for any change, triggers sending available filenames
       Serial.println("Gateway settings received:");
       Serial.println("rtc: " + rtc);
     }
-    else
-    {
-      Serial.println("No valid gateway settings found");
-    }
+    hublinkNode.sendFilenames = true; // true for any change, triggers sending available filenames
   }
 };
-// ======== HUBLINK_HEADER_END ========
 
-// ======== HUBLINK_BLE_ACCESSORY_START ========
 void enterBleSubLoop()
 {
   Serial.println("Entering BLE sub-loop.");
-  BLEDevice::getAdvertising()->start();
+  hublinkNode.initBLE(advName, true);
+  hublinkNode.setBLECallbacks(new ServerCallbacks(),
+                              new FilenameCallback(),
+                              new GatewayCallback());
+  hublinkNode.startAdvertising();
+
   unsigned long subLoopStartTime = millis();
-  bool connectedInitially = false;
+  bool didConnect = false;
 
-  while ((millis() - subLoopStartTime < hublinkNode.bleConnectFor * 1000 && !connectedInitially) || hublinkNode.deviceConnected)
+  // Stay in loop while either:
+  // 1. Within time limit AND haven't connected yet, OR
+  // 2. Device is currently connected
+  while ((millis() - subLoopStartTime < hublinkNode.bleConnectFor * 1000 && !didConnect) || hublinkNode.deviceConnected)
   {
-    hublinkNode.updateConnectionStatus(); // Update connection and watchdog timeout
-
-    // If the device just connected, mark it as initially connected
-    if (hublinkNode.deviceConnected)
-    {
-      connectedInitially = true;
-    }
-
-    delay(100); // Avoid busy waiting
+    hublinkNode.updateConnectionStatus();      // Update connection and watchdog timeout
+    didConnect |= hublinkNode.deviceConnected; // exit after first connection
+    delay(100);                                // Avoid busy waiting
   }
 
-  BLEDevice::getAdvertising()->stop();
+  hublinkNode.stopAdvertising();
+  hublinkNode.deinitBLE();
   Serial.println("Leaving BLE sub-loop.");
 }
-// ======== HUBLINK_BLE_ACCESSORY_END ========
+// ======== HUBLINK_HEADER_END ========
 
 void setup()
 {
@@ -100,16 +92,6 @@ void setup()
     }
   }
   Serial.println("SD Card initialized.");
-
-  // ======== HUBLINK_SETUP_START ========
-  hublinkNode.initBLE("ESP32_BLE_SD"); // !! make optional from hublink.node file
-  hublinkNode.setBLECallbacks(new ServerCallbacks(),
-                              new FilenameCallback(),
-                              new GatewayCallback());
-  hublinkNode.setNodeChar();
-  // ======== HUBLINK_SETUP_END ========
-
-  Serial.println("BLE setup done, looping....");
 }
 
 void loop()
