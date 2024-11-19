@@ -1,4 +1,5 @@
 #include "HublinkNode.h"
+#include "esp_system.h"
 
 HublinkNode::HublinkNode(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), clkFreq(clockFrequency),
                                                                         piReadyForFilenames(false), deviceConnected(false),
@@ -9,6 +10,9 @@ const char *HublinkNode::DEFAULT_NAME = "HUBNODE";
 
 String HublinkNode::setupNode()
 {
+    // Set CPU frequency to 80MHz
+    setCpuFrequencyMhz(80);
+
     if (!initializeSD())
     {
         Serial.println("Failed to initialize SD card when reading node content");
@@ -267,9 +271,9 @@ bool HublinkNode::isValidFile(String fileName)
     lowerFileName.toLowerCase();
 
     // Check for valid extensions
-    for (int i = 0; i < 3; i++)
+    for (const auto &ext : validExtensions) // Use range-based for loop
     {
-        if (lowerFileName.endsWith(validExtensions[i]))
+        if (lowerFileName.endsWith(ext))
         {
             return true;
         }
@@ -412,4 +416,10 @@ void HublinkNode::processLine(const String &line, String &nodeContent)
             }
         }
     }
+}
+
+void HublinkNode::sleep(uint64_t milliseconds)
+{
+    esp_sleep_enable_timer_wakeup(milliseconds * 1000); // Convert to microseconds
+    esp_light_sleep_start();
 }

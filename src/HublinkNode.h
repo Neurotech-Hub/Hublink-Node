@@ -7,6 +7,7 @@
 #include <BLE2902.h>
 #include <SD.h>
 #include <SPI.h>
+#include <esp_sleep.h>
 
 // BLE UUIDs
 #define SERVICE_UUID "57617368-5501-0001-8000-00805f9b34fb"
@@ -56,6 +57,8 @@ public:
     uint32_t bleConnectFor = 30;    // Seconds of each advertising period
     bool disable = false;           // BLE enable flag
     String advName;
+
+    void sleep(uint64_t milliseconds);
 
 private:
     // BLE characteristics
