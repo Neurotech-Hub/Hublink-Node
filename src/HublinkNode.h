@@ -32,6 +32,7 @@ public:
     void setBLECallbacks(BLEServerCallbacks *serverCallbacks,
                          BLECharacteristicCallbacks *filenameCallbacks,
                          BLECharacteristicCallbacks *configCallbacks);
+    String setupNode(); // Reads and parses hublink.node file
 
     // Connection events
     void onConnect();
@@ -72,7 +73,7 @@ private:
 
     // MTU configuration
     uint16_t mtuSize = 20;
-    const uint16_t NEGOTIATE_MTU_SIZE = 512;
+    const uint16_t NEGOTIATE_MTU_SIZE = 515; // 512 + MTU_HEADER_SIZE
     const uint16_t MTU_HEADER_SIZE = 3;
     const uint16_t WATCHDOG_TIMEOUT_MS = 5000;
 
@@ -89,7 +90,6 @@ private:
     String nodeContent;              // Stores parsed node file content
     String configuredAdvName = "";   // Name from hublink.node file
     static const char *DEFAULT_NAME; // Default advertising name
-    String setNodeContent();         // Reads and parses hublink.node file
 
     // Helper functions
     void processLine(const String &line, String &nodeContent);

@@ -7,7 +7,7 @@ HublinkNode::HublinkNode(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipS
 
 const char *HublinkNode::DEFAULT_NAME = "HUBNODE";
 
-String HublinkNode::setNodeContent()
+String HublinkNode::setupNode()
 {
     if (!initializeSD())
     {
@@ -55,7 +55,7 @@ String HublinkNode::setNodeContent()
 void HublinkNode::initBLE(String defaultAdvName, bool allowOverride)
 {
     // Read node content first
-    nodeContent = setNodeContent();
+    nodeContent = setupNode();
 
     // Determine advertising name
     String advertisingName = defaultAdvName;
@@ -102,7 +102,7 @@ void HublinkNode::deinitBLE()
     }
 
     // Deinitialize BLE stack (handles controller and memory cleanup)
-    BLEDevice::deinit(true);
+    BLEDevice::deinit(false);
 }
 
 void HublinkNode::startAdvertising()

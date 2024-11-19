@@ -92,6 +92,8 @@ void setup()
     }
   }
   Serial.println("SD Card initialized.");
+
+  hublinkNode.setupNode();
 }
 
 void loop()
