@@ -99,14 +99,33 @@ void HublinkNode::initBLE(String defaultAdvName, bool allowOverride)
 
 void HublinkNode::deinitBLE()
 {
+    Serial.printf("Free heap before deinit: %d\n", ESP.getFreeHeap());
     // Disconnect any active connections
     if (pServer && deviceConnected)
     {
         pServer->disconnect(pServer->getConnId());
     }
 
-    // Deinitialize BLE stack (handles controller and memory cleanup)
-    BLEDevice::deinit(false);
+    // Clean up callbacks
+    if (serverCallbacks)
+    {
+        delete serverCallbacks;
+        serverCallbacks = nullptr;
+    }
+    if (filenameCallbacks)
+    {
+        delete filenameCallbacks;
+        filenameCallbacks = nullptr;
+    }
+    if (configCallbacks)
+    {
+        delete configCallbacks;
+        configCallbacks = nullptr;
+    }
+
+    // Deinitialize BLE stack
+    BLEDevice::deinit(true);
+    Serial.printf("Free heap after deinit: %d\n", ESP.getFreeHeap());
 }
 
 void HublinkNode::startAdvertising()
@@ -130,14 +149,22 @@ bool HublinkNode::initializeSD()
     return true;
 }
 
-void HublinkNode::setBLECallbacks(BLEServerCallbacks *serverCallbacks,
-                                  BLECharacteristicCallbacks *filenameCallbacks,
-                                  BLECharacteristicCallbacks *configCallbacks)
+void HublinkNode::setBLECallbacks(BLEServerCallbacks *newServerCallbacks,
+                                  BLECharacteristicCallbacks *newFilenameCallbacks,
+                                  BLECharacteristicCallbacks *newConfigCallbacks)
 {
-    // Store pointers for later cleanup
-    serverCallbacks = serverCallbacks;
-    filenameCallbacks = filenameCallbacks;
-    configCallbacks = configCallbacks;
+    // Delete old callbacks if they exist
+    if (serverCallbacks)
+        delete serverCallbacks;
+    if (filenameCallbacks)
+        delete filenameCallbacks;
+    if (configCallbacks)
+        delete configCallbacks;
+
+    // Store new callbacks
+    serverCallbacks = newServerCallbacks;
+    filenameCallbacks = newFilenameCallbacks;
+    configCallbacks = newConfigCallbacks;
 
     // Set the callbacks
     pServer->setCallbacks(serverCallbacks);

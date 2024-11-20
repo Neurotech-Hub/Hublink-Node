@@ -5,43 +5,58 @@
 const int cs = A0;
 
 // ======== HUBLINK_HEADER_START ========
-HublinkNode hublinkNode(cs);         // optional (cs, clkFreq) parameters
-unsigned long lastBleEntryTime = 0;  // Tracks the last time we entered the BLE sub-loop
+HublinkNode hublinkNode(cs);        // optional (cs, clkFreq) parameters
+unsigned long lastBleEntryTime = 0; // Tracks the last time we entered the BLE sub-loop
 String advName = "HUBNODE";
 
-class ServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer *pServer) override {
+// First define the callback classes
+class ServerCallbacks : public BLEServerCallbacks
+{
+  void onConnect(BLEServer *pServer) override
+  {
     hublinkNode.onConnect();
   }
 
-  void onDisconnect(BLEServer *pServer) override {
+  void onDisconnect(BLEServer *pServer) override
+  {
     hublinkNode.onDisconnect();
   }
 };
 
-class FilenameCallback : public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic *pCharacteristic) {
+class FilenameCallback : public BLECharacteristicCallbacks
+{
+  void onWrite(BLECharacteristic *pCharacteristic)
+  {
     hublinkNode.currentFileName = String(pCharacteristic->getValue().c_str());
   }
 };
 
-class GatewayCallback : public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic *pCharacteristic) override {
+class GatewayCallback : public BLECharacteristicCallbacks
+{
+  void onWrite(BLECharacteristic *pCharacteristic) override
+  {
     String rtc = hublinkNode.parseGateway(pCharacteristic, "rtc");
-    if (rtc.length() > 0) {
+    if (rtc.length() > 0)
+    {
       Serial.println("Gateway settings received:");
       Serial.println("rtc: " + rtc);
     }
-    hublinkNode.sendFilenames = true;  // true for any change, triggers sending available filenames
+    hublinkNode.sendFilenames = true;
   }
 };
 
-void enterBleSubLoop() {
+// Then create the instances
+ServerCallbacks serverCallbacks;
+FilenameCallback filenameCallback;
+GatewayCallback gatewayCallback;
+
+void enterBleSubLoop()
+{
   Serial.println("Entering BLE sub-loop.");
   hublinkNode.initBLE(advName, true);
-  hublinkNode.setBLECallbacks(new ServerCallbacks(),
-                              new FilenameCallback(),
-                              new GatewayCallback());
+  hublinkNode.setBLECallbacks(&serverCallbacks,
+                              &filenameCallback,
+                              &gatewayCallback);
   hublinkNode.startAdvertising();
 
   unsigned long subLoopStartTime = millis();
@@ -50,10 +65,11 @@ void enterBleSubLoop() {
   // Stay in loop while either:
   // 1. Within time limit AND haven't connected yet, OR
   // 2. Device is currently connected
-  while ((millis() - subLoopStartTime < hublinkNode.bleConnectFor * 1000 && !didConnect) || hublinkNode.deviceConnected) {
-    hublinkNode.updateConnectionStatus();       // Update connection and watchdog timeout
-    didConnect |= hublinkNode.deviceConnected;  // exit after first connection
-    delay(100);                                 // Avoid busy waiting
+  while ((millis() - subLoopStartTime < hublinkNode.bleConnectFor * 1000 && !didConnect) || hublinkNode.deviceConnected)
+  {
+    hublinkNode.updateConnectionStatus();      // Update connection and watchdog timeout
+    didConnect |= hublinkNode.deviceConnected; // exit after first connection
+    delay(100);                                // Avoid busy waiting
   }
 
   hublinkNode.stopAdvertising();
@@ -62,7 +78,8 @@ void enterBleSubLoop() {
 }
 // ======== HUBLINK_HEADER_END ========
 
-void setup() {
+void setup()
+{
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
@@ -72,9 +89,11 @@ void setup() {
 
   // Setup SD card with proper pin definitions
   SPI.begin(SCK, MISO, MOSI, cs);
-  if (!SD.begin(cs, SPI, 1000000)) {
+  if (!SD.begin(cs, SPI, 1000000))
+  {
     Serial.println("SD Card initialization failed!");
-    while (1) {  // Optional: halt if SD fails
+    while (1)
+    { // Optional: halt if SD fails
       Serial.println("Retrying SD init...");
       if (SD.begin(cs, SPI, 1000000))
         break;
@@ -86,15 +105,17 @@ void setup() {
   hublinkNode.setupNode();
 }
 
-void loop() {
+void loop()
+{
   // ======== HUBLINK_LOOP_START ========
   unsigned long currentTime = millis();
 
   // Check if it's time to enter the BLE sub-loop and not disabled
-  if (!hublinkNode.disable && currentTime - lastBleEntryTime >= hublinkNode.bleConnectEvery * 1000) {
+  if (!hublinkNode.disable && currentTime - lastBleEntryTime >= hublinkNode.bleConnectEvery * 1000)
+  {
     enterBleSubLoop();
     lastBleEntryTime = millis();
   }
-  hublinkNode.sleep(1000);  // light sleep ms
+  hublinkNode.sleep(1000); // light sleep ms
   // ======== HUBLINK_LOOP_END ========
 }
