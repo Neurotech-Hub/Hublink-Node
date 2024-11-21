@@ -56,7 +56,7 @@ String HublinkNode::setupNode()
     return content;
 }
 
-void HublinkNode::initBLE(String defaultAdvName, bool allowOverride)
+void HublinkNode::init(String defaultAdvName, bool allowOverride)
 {
     // Read node content first
     nodeContent = setupNode();
@@ -93,43 +93,30 @@ void HublinkNode::initBLE(String defaultAdvName, bool allowOverride)
         BLECharacteristic::PROPERTY_READ);
 
     pService->start();
-    resetBLEState();
-    setNodeChar(); // Set node characteristic at the end
+    setNodeChar();
 }
 
-void HublinkNode::deinitBLE()
-{
-    Serial.printf("Free heap before deinit: %d\n", ESP.getFreeHeap());
-    // Disconnect any active connections
-    if (pServer && deviceConnected)
-    {
-        pServer->disconnect(pServer->getConnId());
-    }
+// void HublinkNode::deinitBLE()
+// {
+//     Serial.printf("Free heap before deinit: %d\n", ESP.getFreeHeap());
 
-    // Clean up callbacks
-    if (serverCallbacks)
-    {
-        delete serverCallbacks;
-        serverCallbacks = nullptr;
-    }
-    if (filenameCallbacks)
-    {
-        delete filenameCallbacks;
-        filenameCallbacks = nullptr;
-    }
-    if (configCallbacks)
-    {
-        delete configCallbacks;
-        configCallbacks = nullptr;
-    }
+//     // Disconnect any active connections
+//     if (pServer && deviceConnected)
+//     {
+//         pServer->disconnect(pServer->getConnId());
+//     }
 
-    // Deinitialize BLE stack
-    BLEDevice::deinit(true);
-    Serial.printf("Free heap after deinit: %d\n", ESP.getFreeHeap());
-}
+//     // No need to clean up callbacks since they're global objects now
+
+//     // Deinitialize BLE stack
+//     BLEDevice::deinit(true);
+
+//     Serial.printf("Free heap after deinit: %d\n", ESP.getFreeHeap());
+// }
 
 void HublinkNode::startAdvertising()
 {
+    resetBLEState();
     BLEDevice::getAdvertising()->start();
 }
 
@@ -153,23 +140,10 @@ void HublinkNode::setBLECallbacks(BLEServerCallbacks *newServerCallbacks,
                                   BLECharacteristicCallbacks *newFilenameCallbacks,
                                   BLECharacteristicCallbacks *newConfigCallbacks)
 {
-    // Delete old callbacks if they exist
-    if (serverCallbacks)
-        delete serverCallbacks;
-    if (filenameCallbacks)
-        delete filenameCallbacks;
-    if (configCallbacks)
-        delete configCallbacks;
-
-    // Store new callbacks
-    serverCallbacks = newServerCallbacks;
-    filenameCallbacks = newFilenameCallbacks;
-    configCallbacks = newConfigCallbacks;
-
-    // Set the callbacks
-    pServer->setCallbacks(serverCallbacks);
-    pFilenameCharacteristic->setCallbacks(filenameCallbacks);
-    pConfigCharacteristic->setCallbacks(configCallbacks);
+    // Simply set the callbacks without memory management
+    pServer->setCallbacks(newServerCallbacks);
+    pFilenameCharacteristic->setCallbacks(newFilenameCallbacks);
+    pConfigCharacteristic->setCallbacks(newConfigCallbacks);
 }
 
 void HublinkNode::updateConnectionStatus()
@@ -389,7 +363,7 @@ String HublinkNode::parseGateway(BLECharacteristic *pCharacteristic, const Strin
 void HublinkNode::setNodeChar()
 {
     pNodeCharacteristic->setValue(nodeContent.c_str());
-    Serial.println("Node characteristic set to: " + nodeContent);
+    // Serial.println("Node characteristic set to: " + nodeContent);
 }
 
 // Helper function to process each line

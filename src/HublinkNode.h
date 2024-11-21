@@ -24,8 +24,8 @@ public:
     bool initializeSD();
 
     // BLE control
-    void initBLE(String defaultAdvName, bool allowOverride = true);
-    void deinitBLE();
+    void init(String defaultAdvName, bool allowOverride = true);
+    // void deinitBLE();
     void startAdvertising();
     void stopAdvertising();
     void updateConnectionStatus();
@@ -83,11 +83,6 @@ private:
     // SD card configuration
     uint8_t cs;
     uint32_t clkFreq;
-
-    // Callback storage
-    BLEServerCallbacks *serverCallbacks = nullptr;
-    BLECharacteristicCallbacks *filenameCallbacks = nullptr;
-    BLECharacteristicCallbacks *configCallbacks = nullptr;
 
     // Node content handling
     String nodeContent;              // Stores parsed node file content
