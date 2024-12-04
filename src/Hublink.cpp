@@ -1,14 +1,14 @@
-#include "HublinkNode.h"
+#include "Hublink.h"
 #include "esp_system.h"
 
-HublinkNode::HublinkNode(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), clkFreq(clockFrequency),
-                                                                        piReadyForFilenames(false), deviceConnected(false),
-                                                                        currentFileName(""), allFilesSent(false),
-                                                                        watchdogTimer(0), sendFilenames(false) {}
+Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), clkFreq(clockFrequency),
+                                                                piReadyForFilenames(false), deviceConnected(false),
+                                                                currentFileName(""), allFilesSent(false),
+                                                                watchdogTimer(0), sendFilenames(false) {}
 
-const char *HublinkNode::DEFAULT_NAME = "HUBNODE";
+const char *Hublink::DEFAULT_NAME = "HUBNODE";
 
-String HublinkNode::setupNode()
+String Hublink::setupNode()
 {
     // Set CPU frequency to 80MHz
     setCpuFrequencyMhz(80);
@@ -56,7 +56,7 @@ String HublinkNode::setupNode()
     return content;
 }
 
-void HublinkNode::init(String defaultAdvName, bool allowOverride)
+void Hublink::init(String defaultAdvName, bool allowOverride)
 {
     // Read node content first
     nodeContent = setupNode();
@@ -96,7 +96,7 @@ void HublinkNode::init(String defaultAdvName, bool allowOverride)
     setNodeChar();
 }
 
-// void HublinkNode::deinitBLE()
+// void Hublink::deinitBLE()
 // {
 //     Serial.printf("Free heap before deinit: %d\n", ESP.getFreeHeap());
 
@@ -114,19 +114,19 @@ void HublinkNode::init(String defaultAdvName, bool allowOverride)
 //     Serial.printf("Free heap after deinit: %d\n", ESP.getFreeHeap());
 // }
 
-void HublinkNode::startAdvertising()
+void Hublink::startAdvertising()
 {
     resetBLEState();
     BLEDevice::getAdvertising()->start();
 }
 
-void HublinkNode::stopAdvertising()
+void Hublink::stopAdvertising()
 {
     BLEDevice::getAdvertising()->stop();
 }
 
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
-bool HublinkNode::initializeSD()
+bool Hublink::initializeSD()
 {
     if (!SD.begin(cs, SPI, clkFreq))
     {
@@ -136,9 +136,9 @@ bool HublinkNode::initializeSD()
     return true;
 }
 
-void HublinkNode::setBLECallbacks(BLEServerCallbacks *newServerCallbacks,
-                                  BLECharacteristicCallbacks *newFilenameCallbacks,
-                                  BLECharacteristicCallbacks *newConfigCallbacks)
+void Hublink::setBLECallbacks(BLEServerCallbacks *newServerCallbacks,
+                              BLECharacteristicCallbacks *newFilenameCallbacks,
+                              BLECharacteristicCallbacks *newConfigCallbacks)
 {
     // Simply set the callbacks without memory management
     pServer->setCallbacks(newServerCallbacks);
@@ -146,7 +146,7 @@ void HublinkNode::setBLECallbacks(BLEServerCallbacks *newServerCallbacks,
     pConfigCharacteristic->setCallbacks(newConfigCallbacks);
 }
 
-void HublinkNode::updateConnectionStatus()
+void Hublink::updateConnectionStatus()
 {
     // Watchdog timer
     if (deviceConnected && (millis() - watchdogTimer > WATCHDOG_TIMEOUT_MS))
@@ -173,7 +173,7 @@ void HublinkNode::updateConnectionStatus()
     }
 }
 
-void HublinkNode::sendAvailableFilenames()
+void Hublink::sendAvailableFilenames()
 {
     if (!initializeSD())
     {
@@ -221,7 +221,7 @@ void HublinkNode::sendAvailableFilenames()
     root.close();
 }
 
-void HublinkNode::handleFileTransfer(String fileName)
+void Hublink::handleFileTransfer(String fileName)
 {
     // Begin SD communication with updated parameters
     if (!initializeSD())
@@ -259,7 +259,7 @@ void HublinkNode::handleFileTransfer(String fileName)
     Serial.println("File transfer complete.");
 }
 
-bool HublinkNode::isValidFile(String fileName)
+bool Hublink::isValidFile(String fileName)
 {
     // Exclude files that start with a dot
     if (fileName.startsWith("."))
@@ -282,7 +282,7 @@ bool HublinkNode::isValidFile(String fileName)
     return false;
 }
 
-void HublinkNode::onConnect()
+void Hublink::onConnect()
 {
     Serial.println("Hublink node connected.");
     deviceConnected = true;
@@ -290,13 +290,13 @@ void HublinkNode::onConnect()
     BLEDevice::setMTU(NEGOTIATE_MTU_SIZE);
 }
 
-void HublinkNode::onDisconnect()
+void Hublink::onDisconnect()
 {
     Serial.println("Hublink node disconnected.");
     deviceConnected = false;
 }
 
-void HublinkNode::resetBLEState()
+void Hublink::resetBLEState()
 {
     deviceConnected = false;
     piReadyForFilenames = false;
@@ -305,12 +305,12 @@ void HublinkNode::resetBLEState()
     sendFilenames = false;
 }
 
-void HublinkNode::updateMtuSize()
+void Hublink::updateMtuSize()
 {
     mtuSize = BLEDevice::getMTU() - MTU_HEADER_SIZE;
 }
 
-String HublinkNode::parseGateway(BLECharacteristic *pCharacteristic, const String &key)
+String Hublink::parseGateway(BLECharacteristic *pCharacteristic, const String &key)
 {
     std::string value = pCharacteristic->getValue().c_str();
     if (value.empty())
@@ -360,14 +360,14 @@ String HublinkNode::parseGateway(BLECharacteristic *pCharacteristic, const Strin
     return "";
 }
 
-void HublinkNode::setNodeChar()
+void Hublink::setNodeChar()
 {
     pNodeCharacteristic->setValue(nodeContent.c_str());
     // Serial.println("Node characteristic set to: " + nodeContent);
 }
 
 // Helper function to process each line
-void HublinkNode::processLine(const String &line, String &nodeContent)
+void Hublink::processLine(const String &line, String &nodeContent)
 {
     if (line.length() > 0)
     {
@@ -419,7 +419,7 @@ void HublinkNode::processLine(const String &line, String &nodeContent)
     }
 }
 
-void HublinkNode::sleep(uint64_t milliseconds)
+void Hublink::sleep(uint64_t milliseconds)
 {
     esp_sleep_enable_timer_wakeup(milliseconds * 1000); // Convert to microseconds
     esp_light_sleep_start();

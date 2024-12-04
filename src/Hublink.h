@@ -1,5 +1,5 @@
-#ifndef HublinkNode_h
-#define HublinkNode_h
+#ifndef Hublink_h
+#define Hublink_h
 
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -16,11 +16,11 @@
 #define CHARACTERISTIC_UUID_GATEWAY "57617368-5504-0001-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID_NODE "57617368-5505-0001-8000-00805f9b34fb"
 
-class HublinkNode
+class Hublink
 {
 public:
     // Constructor & core functions
-    HublinkNode(uint8_t chipSelect = SS, uint32_t clockFrequency = 1000000);
+    Hublink(uint8_t chipSelect = SS, uint32_t clockFrequency = 1000000);
     bool initializeSD();
 
     // BLE control
