@@ -1,15 +1,8 @@
-# Hublink-Node
+# Hublink
 
-HublinkNode is an Arduino library designed to facilitate Bluetooth Low Energy (BLE) communication and SD card file transfer for ESP32-based nodes. It provides a simple interface for periodic BLE advertising and file transfer capabilities.
+Hublink is an Arduino library designed to facilitate Bluetooth Low Energy (BLE) communication and SD card file transfer for ESP32-based nodes. It provides a simple interface for periodic BLE advertising and file transfer capabilities.
 
-## Features
-- Single-initialization BLE communication using the ESP32 BLE stack
-- File transfer between an SD card and connected BLE central devices
-- Configurable BLE advertising periods via hublink.node file
-- Support for common file types (.txt, .csv, .log)
-- Configuration via BLE characteristic writes
-- Light sleep support between advertising cycles
-- Easy integration with user-defined callbacks
+Learn more at [https://hublink.cloud](https://hublink.cloud).
 
 ## Installation
 1. Download the library from the [GitHub repository](https://github.com/Neurotech-Hub/HublinkNode)
@@ -18,57 +11,47 @@ HublinkNode is an Arduino library designed to facilitate Bluetooth Low Energy (B
 
 ### Prerequisites
 - Install the ESP32 board package in Arduino IDE following the [official guide](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html)
-- An ESP32-S3 development board
-- An SD card module compatible with ESP32
+- An ESP32-S3 board with an SD card module ([View Pricing](https://hublink.cloud/pricing))
 
 ## Usage
-Include the library in your sketch:
+For a complete working example, refer to the `examples/` directory.
 
-```cpp
-#include <HublinkNode.h>
-```
-
-### Basic Setup
-```cpp
-// Initialize HublinkNode with SD card settings
-const int cs = A0;
-HublinkNode hublinkNode(cs);     // optional (cs, clkFreq) parameters
-
-// Define your callback classes
-class ServerCallbacks : public BLEServerCallbacks {
-    void onConnect(BLEServer *pServer) override {
-        hublinkNode.onConnect();
-    }
-    void onDisconnect(BLEServer *pServer) override {
-        hublinkNode.onDisconnect();
-    }
-};
-
-// Create static callback instances
-static ServerCallbacks serverCallbacks;
-// ... other callbacks ...
-
-void setup() {
-    // Initialize BLE with device name
-    hublinkNode.init("HUBNODE", true);
-    hublinkNode.setBLECallbacks(&serverCallbacks,
-                               &filenameCallback,
-                               &gatewayCallback);
+### Meta Data File (meta.json)
+The library accepts configuration via a file on the SD card in JSON format.
+```json
+{
+  "hublink": {
+    "advertise": "CUSTOM_NAME",
+    "advertise_every": 300,
+    "advertise_for": 30,
+    "disable": false
+  },
+  "subject": {
+    "id": "mouse001",
+    "strain": "C57BL/6", 
+    "sex": "male"
+  },
+  "fed": {
+    "program": "Classic"
+  }
 }
 ```
 
-### Configuration File (hublink.node)
-The library accepts configuration via a file on the SD card in the following format:
-```
-advertise=CUSTOM_NAME
-interval=300,30
-disable=false
+Where in the `hublink` configuration:
+- `advertise`: Sets custom BLE advertising name
+- `interval_every`: Seconds between advertising periods
+- `interval_for`: Duration of each advertising period in seconds
+- `disable`: Enables/disables BLE functionality
+
+Hublink uses [bblanchon/ArduinoJson](https://github.com/bblanchon/ArduinoJson) to parse the JSON file. For example, to access the advertise name using ArduinoJson:
+```cpp
+JsonObject hublink = doc["hublink"];
+const char* advertiseName = hublink["advertise"];
+int intervalEvery = hublink["interval_every"];
+int intervalFor = hublink["interval_for"];
 ```
 
-Where:
-- `advertise`: Sets custom BLE advertising name
-- `interval`: Format is `EVERY_SECONDS,FOR_SECONDS`
-- `disable`: Enables/disables BLE functionality
+There are a number of free JSON editors/visualizers (e.g., [JSON to Graph Converter](https://jsonviewer.tools/editor)).
 
 ### BLE Configuration
 The library also accepts configuration via BLE in the following format:
@@ -80,8 +63,6 @@ Example configuration string:
 ```
 rtc=2024-03-21 14:30:00
 ```
-
-For a complete working example, refer to the `examples/hublink_example` directory in the library.
 
 ## License
 This library is open-source and available under the MIT license.

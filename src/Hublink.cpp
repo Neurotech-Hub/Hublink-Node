@@ -1,65 +1,41 @@
 #include "Hublink.h"
-#include "esp_system.h"
 
 Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), clkFreq(clockFrequency),
                                                                 piReadyForFilenames(false), deviceConnected(false),
                                                                 currentFileName(""), allFilesSent(false),
-                                                                watchdogTimer(0), sendFilenames(false) {}
-
-const char *Hublink::DEFAULT_NAME = "HUBNODE";
-
-String Hublink::setupNode()
+                                                                watchdogTimer(0), sendFilenames(false)
 {
-    // Set CPU frequency to 80MHz
-    setCpuFrequencyMhz(80);
-
-    if (!initializeSD())
-    {
-        Serial.println("Failed to initialize SD card when reading node content");
-        return "";
-    }
-
-    File nodeFile = SD.open("/hublink.node", FILE_READ);
-    if (!nodeFile)
-    {
-        Serial.println("No hublink.node file found");
-        return "";
-    }
-
-    String content = "";
-    String currentLine = "";
-    disable = false; // Reset disable flag before parsing
-
-    while (nodeFile.available())
-    {
-        char c = nodeFile.read();
-        if (c == '\n' || c == '\r')
-        {
-            if (currentLine.length() > 0)
-            {
-                processLine(currentLine, content);
-            }
-            currentLine = "";
-        }
-        else
-        {
-            currentLine += c;
-        }
-    }
-
-    if (currentLine.length() > 0)
-    {
-        processLine(currentLine, content);
-    }
-
-    nodeFile.close();
-    return content;
+    defaultServerCallbacks = nullptr;
+    defaultFilenameCallbacks = nullptr;
+    defaultGatewayCallbacks = nullptr;
 }
 
-void Hublink::init(String defaultAdvName, bool allowOverride)
+bool Hublink::init(String defaultAdvName, bool allowOverride)
 {
-    // Read node content first
-    nodeContent = setupNode();
+    // Create callbacks here instead of in constructor if (!defaultServerCallbacks)
+    {
+        defaultServerCallbacks = new DefaultServerCallbacks(this);
+    }
+    if (!defaultFilenameCallbacks)
+    {
+        defaultFilenameCallbacks = new DefaultFilenameCallback(this);
+    }
+    if (!defaultGatewayCallbacks)
+    {
+        defaultGatewayCallbacks = new DefaultGatewayCallback(this);
+    }
+
+    if (initSD())
+    {
+        Serial.println("✓ SD Card.");
+    }
+    else
+    {
+        Serial.println("✗ SD Card.");
+        return false;
+    }
+    // Read meta.json content first
+    String metaJson = readMetaJson();
 
     // Determine advertising name
     String advertisingName = defaultAdvName;
@@ -93,26 +69,83 @@ void Hublink::init(String defaultAdvName, bool allowOverride)
         BLECharacteristic::PROPERTY_READ);
 
     pService->start();
-    setNodeChar();
+    pNodeCharacteristic->setValue(metaJson.c_str());
+
+    Serial.printf("Advertising name: %s, Connect every: %d, Connect for: %d\n",
+                  advertisingName.c_str(), bleConnectEvery, bleConnectFor);
+
+    // Set default callbacks if none provided
+    setBLECallbacks(defaultServerCallbacks,
+                    defaultFilenameCallbacks,
+                    defaultGatewayCallbacks);
+
+    lastHublinkMillis = millis();
+    return true;
 }
 
-// void Hublink::deinitBLE()
-// {
-//     Serial.printf("Free heap before deinit: %d\n", ESP.getFreeHeap());
+String Hublink::readMetaJson()
+{
+    if (!initSD())
+    {
+        Serial.println("Failed to initialize SD card when reading meta.json");
+        return "";
+    }
 
-//     // Disconnect any active connections
-//     if (pServer && deviceConnected)
-//     {
-//         pServer->disconnect(pServer->getConnId());
-//     }
+    File configFile = SD.open(META_JSON_PATH, FILE_READ);
+    if (!configFile)
+    {
+        Serial.println("No meta.json file found");
+        return "";
+    }
 
-//     // No need to clean up callbacks since they're global objects now
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, configFile);
+    configFile.close();
 
-//     // Deinitialize BLE stack
-//     BLEDevice::deinit(true);
+    if (error)
+    {
+        Serial.print("Failed to parse meta.json: ");
+        Serial.println(error.c_str());
+        return "";
+    }
 
-//     Serial.printf("Free heap after deinit: %d\n", ESP.getFreeHeap());
-// }
+    JsonObject hublink = doc["hublink"];
+    String content = "";
+
+    // Parse configuration
+    if (hublink.containsKey("advertise"))
+    {
+        configuredAdvName = hublink["advertise"].as<String>();
+    }
+
+    if (hublink.containsKey("advertise_every") && hublink.containsKey("advertise_for"))
+    {
+        uint32_t newEvery = hublink["advertise_every"];
+        uint32_t newFor = hublink["advertise_for"];
+
+        if (newEvery > 0 && newFor > 0)
+        {
+            bleConnectEvery = newEvery;
+            bleConnectFor = newFor;
+            Serial.printf("Updated intervals: every=%d, for=%d\n", bleConnectEvery, bleConnectFor);
+        }
+    }
+
+    if (hublink.containsKey("disable"))
+    {
+        disable = hublink["disable"].as<bool>();
+        Serial.printf("BLE disable flag set to: %s\n", disable ? "true" : "false");
+    }
+
+    // Convert the hublink object to a string for BLE characteristic
+    serializeJson(doc, content);
+    return content;
+}
+
+void Hublink::setCPUFrequency(uint32_t freq_mhz)
+{
+    setCpuFrequencyMhz(freq_mhz);
+}
 
 void Hublink::startAdvertising()
 {
@@ -126,21 +159,15 @@ void Hublink::stopAdvertising()
 }
 
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
-bool Hublink::initializeSD()
+bool Hublink::initSD()
 {
-    if (!SD.begin(cs, SPI, clkFreq))
-    {
-        Serial.println("Failed to initialize SD in Hublink library");
-        return false;
-    }
-    return true;
+    return SD.begin(cs, SPI, clkFreq);
 }
 
 void Hublink::setBLECallbacks(BLEServerCallbacks *newServerCallbacks,
                               BLECharacteristicCallbacks *newFilenameCallbacks,
                               BLECharacteristicCallbacks *newConfigCallbacks)
 {
-    // Simply set the callbacks without memory management
     pServer->setCallbacks(newServerCallbacks);
     pFilenameCharacteristic->setCallbacks(newFilenameCallbacks);
     pConfigCharacteristic->setCallbacks(newConfigCallbacks);
@@ -152,6 +179,7 @@ void Hublink::updateConnectionStatus()
     if (deviceConnected && (millis() - watchdogTimer > WATCHDOG_TIMEOUT_MS))
     {
         Serial.println("Hublink node timeout detected, disconnecting...");
+        Serial.flush();
         pServer->disconnect(pServer->getConnId());
     }
 
@@ -175,7 +203,7 @@ void Hublink::updateConnectionStatus()
 
 void Hublink::sendAvailableFilenames()
 {
-    if (!initializeSD())
+    if (!initSD())
     {
         Serial.println("Failed to initialize SD card");
         return;
@@ -224,7 +252,7 @@ void Hublink::sendAvailableFilenames()
 void Hublink::handleFileTransfer(String fileName)
 {
     // Begin SD communication with updated parameters
-    if (!initializeSD())
+    if (!initSD())
     {
         Serial.println("Failed to initialize SD card");
         return;
@@ -315,112 +343,72 @@ String Hublink::parseGateway(BLECharacteristic *pCharacteristic, const String &k
     std::string value = pCharacteristic->getValue().c_str();
     if (value.empty())
     {
-        Serial.println("Config: Empty characteristic value");
+        Serial.println("Config: None");
         return "";
     }
 
     String configStr = String(value.c_str());
-    Serial.println("Config: Parsing string: " + configStr);
-    int startPos = 0;
-    int endPos;
+    Serial.println("Config: Parsing JSON: " + configStr);
 
-    while ((endPos = configStr.indexOf(';', startPos)) != -1)
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, configStr);
+
+    if (error)
     {
-        String pair = configStr.substring(startPos, endPos);
-        int equalPos = pair.indexOf('=');
-
-        if (equalPos != -1)
-        {
-            String currentKey = pair.substring(0, equalPos);
-            String currentValue = pair.substring(equalPos + 1);
-
-            if (currentKey == key && currentValue.length() > 0)
-            {
-                return currentValue;
-            }
-        }
-
-        startPos = endPos + 1;
+        Serial.print("Config: JSON parsing failed: ");
+        Serial.println(error.c_str());
+        return "";
     }
 
-    // Check the last pair if it doesn't end with semicolon
-    String pair = configStr.substring(startPos);
-    int equalPos = pair.indexOf('=');
-    if (equalPos != -1)
+    if (!doc.containsKey(key))
     {
-        String currentKey = pair.substring(0, equalPos);
-        String currentValue = pair.substring(equalPos + 1);
-
-        if (currentKey == key && currentValue.length() > 0)
-        {
-            return currentValue;
-        }
+        return "";
     }
 
-    return "";
-}
-
-void Hublink::setNodeChar()
-{
-    pNodeCharacteristic->setValue(nodeContent.c_str());
-    // Serial.println("Node characteristic set to: " + nodeContent);
-}
-
-// Helper function to process each line
-void Hublink::processLine(const String &line, String &nodeContent)
-{
-    if (line.length() > 0)
-    {
-        // Add to nodeContent
-        if (nodeContent.length() > 0)
-        {
-            nodeContent += ";";
-        }
-        nodeContent += line;
-
-        // Parse configuration
-        int equalPos = line.indexOf('=');
-        if (equalPos != -1)
-        {
-            String key = line.substring(0, equalPos);
-            String value = line.substring(equalPos + 1);
-
-            if (key == "advertise")
-            {
-                configuredAdvName = value;
-            }
-            else if (key == "interval")
-            {
-                int dashPos = value.indexOf(',');
-                if (dashPos != -1)
-                {
-                    String everyStr = value.substring(0, dashPos);
-                    String forStr = value.substring(dashPos + 1);
-
-                    uint32_t newEvery = everyStr.toInt();
-                    uint32_t newFor = forStr.toInt();
-
-                    if (newEvery > 0 && newFor > 0)
-                    {
-                        bleConnectEvery = newEvery;
-                        bleConnectFor = newFor;
-                        Serial.printf("Updated intervals: every=%d, for=%d\n", bleConnectEvery, bleConnectFor);
-                    }
-                }
-            }
-            else if (key == "disable")
-            {
-                String valueLower = value;
-                valueLower.toLowerCase();
-                disable = (valueLower == "true" || value == "1");
-                Serial.printf("BLE disable flag set to: %s\n", disable ? "true" : "false");
-            }
-        }
-    }
+    return doc[key].as<String>();
 }
 
 void Hublink::sleep(uint64_t milliseconds)
 {
-    esp_sleep_enable_timer_wakeup(milliseconds * 1000); // Convert to microseconds
+    Serial.flush();
+    esp_sleep_enable_timer_wakeup(milliseconds * 1000);
     esp_light_sleep_start();
+}
+
+void Hublink::doBLE()
+{
+    Serial.println("Starting advertising...");
+    Serial.flush();
+    startAdvertising();
+    unsigned long subLoopStartTime = millis();
+    bool didConnect = false;
+
+    while ((millis() - subLoopStartTime < bleConnectFor * 1000 && !didConnect) || deviceConnected)
+    {
+        updateConnectionStatus();
+        didConnect |= deviceConnected;
+        delay(100);
+    }
+
+    stopAdvertising();
+}
+
+void Hublink::sync()
+{
+    unsigned long currentTime = millis();
+    if (!disable && currentTime - lastHublinkMillis >= bleConnectEvery * 1000)
+    {
+        Serial.println("Hublink started advertising... ");
+        doBLE();
+        Serial.println("Done advertising.");
+        lastHublinkMillis = currentTime;
+    }
+}
+
+// Add destructor to clean up callback instances
+Hublink::~Hublink()
+{
+    delete defaultServerCallbacks;
+    delete defaultFilenameCallbacks;
+    delete defaultGatewayCallbacks;
 }
