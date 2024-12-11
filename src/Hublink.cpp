@@ -12,6 +12,9 @@ Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), 
 
 bool Hublink::init(String defaultAdvName, bool allowOverride)
 {
+    this->defaultAdvName = defaultAdvName; // Store the default name
+    this->allowOverride = allowOverride;   // Store the override flag
+
     // Create callbacks here instead of in constructor if (!defaultServerCallbacks)
     {
         defaultServerCallbacks = new DefaultServerCallbacks(this);
@@ -34,51 +37,7 @@ bool Hublink::init(String defaultAdvName, bool allowOverride)
         Serial.println("✗ SD Card.");
         return false;
     }
-    // Read meta.json content first
-    String metaJson = readMetaJson();
-
-    // Determine advertising name
-    String advertisingName = defaultAdvName;
-    if (allowOverride && configuredAdvName.length() > 0)
-    {
-        advertisingName = configuredAdvName;
-    }
-
-    // Initialize BLE
-    BLEDevice::init(advertisingName);
-    pServer = BLEDevice::createServer();
-
-    BLEService *pService = pServer->createService(SERVICE_UUID);
-
-    pFilenameCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_FILENAME,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
-    pFilenameCharacteristic->addDescriptor(new BLE2902());
-
-    pFileTransferCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_FILETRANSFER,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
-    pFileTransferCharacteristic->addDescriptor(new BLE2902());
-
-    pConfigCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_GATEWAY,
-        BLECharacteristic::PROPERTY_WRITE);
-
-    pNodeCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_NODE,
-        BLECharacteristic::PROPERTY_READ);
-
-    pService->start();
-    pNodeCharacteristic->setValue(metaJson.c_str());
-
-    Serial.printf("Advertising name: %s, Connect every: %d, Connect for: %d\n",
-                  advertisingName.c_str(), bleConnectEvery, bleConnectFor);
-
-    // Set default callbacks if none provided
-    setBLECallbacks(defaultServerCallbacks,
-                    defaultFilenameCallbacks,
-                    defaultGatewayCallbacks);
-
+    readMetaJson(); // set meta.json content
     lastHublinkMillis = millis();
     return true;
 }
@@ -150,12 +109,27 @@ void Hublink::setCPUFrequency(uint32_t freq_mhz)
 void Hublink::startAdvertising()
 {
     resetBLEState();
-    BLEDevice::getAdvertising()->start();
+
+    // Explicitly start Bluetooth
+    if (!btStart())
+    {
+        Serial.println("Failed to start Bluetooth");
+        return;
+    }
+
+    // Configure advertising parameters for power saving
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->setMinInterval(0x20); // 32ms
+    pAdvertising->setMaxInterval(0x40); // 64ms
+
+    pAdvertising->start();
 }
 
 void Hublink::stopAdvertising()
 {
     BLEDevice::getAdvertising()->stop();
+    // Shutdown Bluetooth to save power
+    // btStop();
 }
 
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
@@ -179,7 +153,6 @@ void Hublink::updateConnectionStatus()
     if (deviceConnected && (millis() - watchdogTimer > WATCHDOG_TIMEOUT_MS))
     {
         Serial.println("Hublink node timeout detected, disconnecting...");
-        Serial.flush();
         pServer->disconnect(pServer->getConnId());
     }
 
@@ -370,16 +343,63 @@ String Hublink::parseGateway(BLECharacteristic *pCharacteristic, const String &k
 
 void Hublink::sleep(uint64_t milliseconds)
 {
-    Serial.flush();
-    esp_sleep_enable_timer_wakeup(milliseconds * 1000);
+    // Print memory stats before sleep
+    // Serial.printf("Before sleep - Free heap: %d bytes, Min free heap: %d bytes\n",
+    //               ESP.getFreeHeap(),
+    //               ESP.getMinFreeHeap());
+
+    esp_sleep_enable_timer_wakeup(milliseconds * 1000); // Convert to microseconds
     esp_light_sleep_start();
+
+    // Print memory stats after sleep
+    // Serial.printf("After sleep  - Free heap: %d bytes, Min free heap: %d bytes\n",
+    //               ESP.getFreeHeap(),
+    //               ESP.getMinFreeHeap());
 }
 
 void Hublink::doBLE()
 {
-    Serial.println("Starting advertising...");
-    Serial.flush();
+    metaJson = readMetaJson();
+    // Update advertising name based on meta.json and stored parameters
+    advName = allowOverride && configuredAdvName.length() > 0 ? configuredAdvName : defaultAdvName;
+
+    BLEDevice::init(advName.c_str());
+
+    // Create server and services
+    pServer = BLEDevice::createServer();
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    pFilenameCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILENAME,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
+    pFilenameCharacteristic->addDescriptor(new BLE2902());
+
+    pFileTransferCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILETRANSFER,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
+    pFileTransferCharacteristic->addDescriptor(new BLE2902());
+
+    pConfigCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_GATEWAY,
+        BLECharacteristic::PROPERTY_WRITE);
+
+    pNodeCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_NODE,
+        BLECharacteristic::PROPERTY_READ);
+
+    pService->start();
+    pNodeCharacteristic->setValue(metaJson.c_str());
+
+    Serial.printf("Advertising name: %s, Connect every: %d, Connect for: %d\n",
+                  advName.c_str(), bleConnectEvery, bleConnectFor);
+
+    // Set default callbacks if none provided
+    setBLECallbacks(defaultServerCallbacks,
+                    defaultFilenameCallbacks,
+                    defaultGatewayCallbacks);
+
     startAdvertising();
+
     unsigned long subLoopStartTime = millis();
     bool didConnect = false;
 
@@ -391,6 +411,7 @@ void Hublink::doBLE()
     }
 
     stopAdvertising();
+    // BLEDevice::deinit(false); // Clean up BLE resources
 }
 
 void Hublink::sync()

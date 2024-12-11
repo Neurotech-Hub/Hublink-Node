@@ -175,6 +175,9 @@ private:
     DefaultServerCallbacks *defaultServerCallbacks;
     DefaultFilenameCallback *defaultFilenameCallbacks;
     DefaultGatewayCallback *defaultGatewayCallbacks;
+
+    String defaultAdvName;
+    bool allowOverride;
 };
 
 #endif
