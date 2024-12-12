@@ -3,41 +3,99 @@
 Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), clkFreq(clockFrequency),
                                                                 piReadyForFilenames(false), deviceConnected(false),
                                                                 currentFileName(""), allFilesSent(false),
-                                                                watchdogTimer(0), sendFilenames(false)
+                                                                watchdogTimer(0), sendFilenames(false),
+                                                                defaultServerCallbacks(nullptr),
+                                                                defaultFilenameCallbacks(nullptr),
+                                                                defaultGatewayCallbacks(nullptr)
 {
-    defaultServerCallbacks = nullptr;
-    defaultFilenameCallbacks = nullptr;
-    defaultGatewayCallbacks = nullptr;
 }
 
 bool Hublink::init(String defaultAdvName, bool allowOverride)
 {
-    this->defaultAdvName = defaultAdvName; // Store the default name
-    this->allowOverride = allowOverride;   // Store the override flag
-
-    // Create callbacks here instead of in constructor if (!defaultServerCallbacks)
+    if (defaultServerCallbacks == nullptr)
     {
         defaultServerCallbacks = new DefaultServerCallbacks(this);
-    }
-    if (!defaultFilenameCallbacks)
-    {
-        defaultFilenameCallbacks = new DefaultFilenameCallback(this);
-    }
-    if (!defaultGatewayCallbacks)
-    {
-        defaultGatewayCallbacks = new DefaultGatewayCallback(this);
+        if (defaultServerCallbacks == nullptr)
+        {
+            Serial.println("Failed to allocate server callbacks");
+            return false;
+        }
     }
 
-    if (initSD())
+    if (defaultFilenameCallbacks == nullptr)
     {
-        Serial.println("✓ SD Card.");
+        defaultFilenameCallbacks = new DefaultFilenameCallback(this);
+        if (defaultFilenameCallbacks == nullptr)
+        {
+            Serial.println("Failed to allocate filename callbacks");
+            return false;
+        }
     }
-    else
+
+    if (defaultGatewayCallbacks == nullptr)
+    {
+        defaultGatewayCallbacks = new DefaultGatewayCallback(this);
+        if (defaultGatewayCallbacks == nullptr)
+        {
+            Serial.println("Failed to allocate gateway callbacks");
+            return false;
+        }
+    }
+
+    if (!setBLECallbacks())
+    {
+        Serial.println("Failed to set BLE callbacks");
+        return false;
+    }
+
+    if (!initSD())
     {
         Serial.println("✗ SD Card.");
         return false;
     }
-    readMetaJson(); // set meta.json content
+    Serial.println("✓ SD Card.");
+
+    // Initialize BLE stack and services
+    metaJson = readMetaJson();
+    // Set the advertising name based on configuration
+    if (allowOverride && configuredAdvName.length() > 0)
+    {
+        advName = configuredAdvName;
+    }
+    else
+    {
+        advName = defaultAdvName;
+    }
+
+    BLEDevice::init(advName.c_str());
+    pServer = BLEDevice::createServer();
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    // Create characteristics
+    pFilenameCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILENAME,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
+    pFilenameCharacteristic->addDescriptor(new BLE2902());
+
+    pFileTransferCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILETRANSFER,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
+    pFileTransferCharacteristic->addDescriptor(new BLE2902());
+
+    pConfigCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_GATEWAY,
+        BLECharacteristic::PROPERTY_WRITE);
+
+    pNodeCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_NODE,
+        BLECharacteristic::PROPERTY_READ);
+
+    pService->start();
+    pNodeCharacteristic->setValue(metaJson.c_str());
+
+    Serial.printf("Advertising name: %s, Connect every: %d, Connect for: %d\n",
+                  advName.c_str(), bleConnectEvery, bleConnectFor);
+
     lastHublinkMillis = millis();
     return true;
 }
@@ -110,26 +168,18 @@ void Hublink::startAdvertising()
 {
     resetBLEState();
 
-    // Explicitly start Bluetooth
-    if (!btStart())
-    {
-        Serial.println("Failed to start Bluetooth");
-        return;
-    }
-
-    // Configure advertising parameters for power saving
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->setMinInterval(0x20); // 32ms
-    pAdvertising->setMaxInterval(0x40); // 64ms
+    pAdvertising->setMinInterval(0x20);
+    pAdvertising->setMaxInterval(0x40);
 
     pAdvertising->start();
+    delay(10); // let the BLE stack start
 }
 
 void Hublink::stopAdvertising()
 {
     BLEDevice::getAdvertising()->stop();
-    // Shutdown Bluetooth to save power
-    // btStop();
+    delay(10); // let the BLE stack stop
 }
 
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
@@ -138,13 +188,31 @@ bool Hublink::initSD()
     return SD.begin(cs, SPI, clkFreq);
 }
 
-void Hublink::setBLECallbacks(BLEServerCallbacks *newServerCallbacks,
+bool Hublink::setBLECallbacks(BLEServerCallbacks *newServerCallbacks,
                               BLECharacteristicCallbacks *newFilenameCallbacks,
                               BLECharacteristicCallbacks *newConfigCallbacks)
 {
-    pServer->setCallbacks(newServerCallbacks);
-    pFilenameCharacteristic->setCallbacks(newFilenameCallbacks);
-    pConfigCharacteristic->setCallbacks(newConfigCallbacks);
+    if (!pServer || !pFilenameCharacteristic || !pConfigCharacteristic)
+    {
+        return false;
+    }
+
+    if (newServerCallbacks != nullptr)
+    {
+        pServer->setCallbacks(newServerCallbacks);
+    }
+
+    if (newFilenameCallbacks != nullptr)
+    {
+        pFilenameCharacteristic->setCallbacks(newFilenameCallbacks);
+    }
+
+    if (newConfigCallbacks != nullptr)
+    {
+        pConfigCharacteristic->setCallbacks(newConfigCallbacks);
+    }
+
+    return true;
 }
 
 void Hublink::updateConnectionStatus()
@@ -154,8 +222,10 @@ void Hublink::updateConnectionStatus()
     {
         Serial.println("Hublink node timeout detected, disconnecting...");
         pServer->disconnect(pServer->getConnId());
+        delay(500); // Give BLE stack time to clean up
     }
 
+    // Handle file transfers when connected
     if (deviceConnected && !currentFileName.isEmpty())
     {
         Serial.print("Requested file: ");
@@ -164,6 +234,7 @@ void Hublink::updateConnectionStatus()
         currentFileName = "";
     }
 
+    // once sendFilenames is true
     if (deviceConnected && currentFileName.isEmpty() && !allFilesSent && sendFilenames)
     {
         updateMtuSize();
@@ -359,47 +430,7 @@ void Hublink::sleep(uint64_t milliseconds)
 
 void Hublink::doBLE()
 {
-    metaJson = readMetaJson();
-    // Update advertising name based on meta.json and stored parameters
-    advName = allowOverride && configuredAdvName.length() > 0 ? configuredAdvName : defaultAdvName;
-
-    BLEDevice::init(advName.c_str());
-
-    // Create server and services
-    pServer = BLEDevice::createServer();
-    BLEService *pService = pServer->createService(SERVICE_UUID);
-
-    pFilenameCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_FILENAME,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
-    pFilenameCharacteristic->addDescriptor(new BLE2902());
-
-    pFileTransferCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_FILETRANSFER,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
-    pFileTransferCharacteristic->addDescriptor(new BLE2902());
-
-    pConfigCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_GATEWAY,
-        BLECharacteristic::PROPERTY_WRITE);
-
-    pNodeCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_NODE,
-        BLECharacteristic::PROPERTY_READ);
-
-    pService->start();
-    pNodeCharacteristic->setValue(metaJson.c_str());
-
-    Serial.printf("Advertising name: %s, Connect every: %d, Connect for: %d\n",
-                  advName.c_str(), bleConnectEvery, bleConnectFor);
-
-    // Set default callbacks if none provided
-    setBLECallbacks(defaultServerCallbacks,
-                    defaultFilenameCallbacks,
-                    defaultGatewayCallbacks);
-
     startAdvertising();
-
     unsigned long subLoopStartTime = millis();
     bool didConnect = false;
 
@@ -407,11 +438,9 @@ void Hublink::doBLE()
     {
         updateConnectionStatus();
         didConnect |= deviceConnected;
-        delay(100);
+        delay(100); // This existing delay is good for BLE operations
     }
-
     stopAdvertising();
-    // BLEDevice::deinit(false); // Clean up BLE resources
 }
 
 void Hublink::sync()
@@ -429,7 +458,21 @@ void Hublink::sync()
 // Add destructor to clean up callback instances
 Hublink::~Hublink()
 {
-    delete defaultServerCallbacks;
-    delete defaultFilenameCallbacks;
-    delete defaultGatewayCallbacks;
+    if (defaultServerCallbacks != nullptr)
+    {
+        delete defaultServerCallbacks;
+        defaultServerCallbacks = nullptr;
+    }
+
+    if (defaultFilenameCallbacks != nullptr)
+    {
+        delete defaultFilenameCallbacks;
+        defaultFilenameCallbacks = nullptr;
+    }
+
+    if (defaultGatewayCallbacks != nullptr)
+    {
+        delete defaultGatewayCallbacks;
+        defaultGatewayCallbacks = nullptr;
+    }
 }

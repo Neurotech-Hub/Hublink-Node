@@ -34,9 +34,9 @@ public:
     void stopAdvertising();
     void updateConnectionStatus();
     void updateMtuSize();
-    void setBLECallbacks(BLEServerCallbacks *serverCallbacks,
-                         BLECharacteristicCallbacks *filenameCallbacks,
-                         BLECharacteristicCallbacks *configCallbacks);
+    bool setBLECallbacks(BLEServerCallbacks *serverCallbacks = nullptr,
+                         BLECharacteristicCallbacks *filenameCallbacks = nullptr,
+                         BLECharacteristicCallbacks *configCallbacks = nullptr);
     String readMetaJson(); // Reads and parses meta.json file
 
     // Connection events
@@ -175,9 +175,6 @@ private:
     DefaultServerCallbacks *defaultServerCallbacks;
     DefaultFilenameCallback *defaultFilenameCallbacks;
     DefaultGatewayCallback *defaultGatewayCallbacks;
-
-    String defaultAdvName;
-    bool allowOverride;
 };
 
 #endif
