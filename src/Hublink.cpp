@@ -142,25 +142,27 @@ void Hublink::startAdvertising()
     pServer = BLEDevice::createServer();
     pService = pServer->createService(SERVICE_UUID);
 
+    // !! chars here leak, but not in basic example
     // Create characteristics with all required properties
     pFilenameCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_FILENAME,
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
-    pFilenameCharacteristic->addDescriptor(new BLE2902());
+    // pFilenameCharacteristic->addDescriptor(new BLE2902()); // !! this leaks
 
-    pFileTransferCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_FILETRANSFER,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
-    pFileTransferCharacteristic->addDescriptor(new BLE2902());
+    // pFileTransferCharacteristic = pService->createCharacteristic(
+    //     CHARACTERISTIC_UUID_FILETRANSFER,
+    //     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
+    // pFileTransferCharacteristic->addDescriptor(new BLE2902());
 
-    pConfigCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_GATEWAY,
-        BLECharacteristic::PROPERTY_WRITE);
+    // pConfigCharacteristic = pService->createCharacteristic(
+    //     CHARACTERISTIC_UUID_GATEWAY,
+    //     BLECharacteristic::PROPERTY_WRITE);
 
-    pNodeCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_NODE,
-        BLECharacteristic::PROPERTY_READ);
-    pNodeCharacteristic->setValue(metaJson.c_str()); // Important: Set the meta JSON value
+    // pNodeCharacteristic = pService->createCharacteristic(
+    //     CHARACTERISTIC_UUID_NODE,
+    //     BLECharacteristic::PROPERTY_READ);
+
+        // pNodeCharacteristic->setValue(metaJson.c_str()); // Important: Set the meta JSON value
 
     // Start service
     pService->start();

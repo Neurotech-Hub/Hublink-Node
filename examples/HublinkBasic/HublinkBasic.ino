@@ -32,5 +32,5 @@ void loop()
 {
   hublink.sync(); // only blocks when ready
   Serial.flush(); // Add flush before sleep
-  hublink.sleep(2000); // optional light sleep
+  hublink.sleep(1000); // optional light sleep
 }
