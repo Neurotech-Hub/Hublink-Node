@@ -21,6 +21,15 @@
 // File paths
 #define META_JSON_PATH "/meta.json"
 
+// CPU Frequency options that maintain radio functionality
+// hublink.setCPUFrequency(CPUFrequency::MHz_80);
+enum class CPUFrequency : uint32_t
+{
+    MHz_80 = 80,   // Minimum frequency for stable radio operation
+    MHz_160 = 160, // Default frequency
+    MHz_240 = 240  // Maximum frequency
+};
+
 class Hublink
 {
 public:
@@ -62,10 +71,10 @@ public:
     String advName;
 
     void sleep(uint64_t milliseconds);
-    void setCPUFrequency(uint32_t freq_mhz);
+    void setCPUFrequency(CPUFrequency freq_mhz);
 
     // Virtual methods for callbacks
-    virtual void doBLE();
+    void doBLE();
 
     void sync(); // called from loop()
 
@@ -145,6 +154,7 @@ private:
     BLECharacteristic *pConfigCharacteristic;
     BLECharacteristic *pNodeCharacteristic;
     BLEServer *pServer;
+    BLEService *pService;
 
     // State tracking
     String macAddress;
@@ -175,6 +185,7 @@ private:
     DefaultServerCallbacks *defaultServerCallbacks;
     DefaultFilenameCallback *defaultFilenameCallbacks;
     DefaultGatewayCallback *defaultGatewayCallbacks;
+    void createCallbacks();
 };
 
 #endif

@@ -12,6 +12,9 @@ Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), 
 
 bool Hublink::init(String defaultAdvName, bool allowOverride)
 {
+    // Set CPU frequency to minimum required for radio operation
+    setCPUFrequency(CPUFrequency::MHz_80);
+
     // 1. Create callback objects
     if (defaultServerCallbacks == nullptr)
     {
@@ -51,7 +54,7 @@ bool Hublink::init(String defaultAdvName, bool allowOverride)
     }
     Serial.println("✓ SD Card.");
 
-    // 3. Initialize BLE stack and create server/characteristics
+    // 3. Read meta.json and set advertising name
     metaJson = readMetaJson();
     if (allowOverride && configuredAdvName.length() > 0)
     {
@@ -61,42 +64,6 @@ bool Hublink::init(String defaultAdvName, bool allowOverride)
     {
         advName = defaultAdvName;
     }
-
-    BLEDevice::init(advName.c_str());
-    pServer = BLEDevice::createServer();
-    BLEService *pService = pServer->createService(SERVICE_UUID);
-
-    // Create characteristics
-    pFilenameCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_FILENAME,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
-    pFilenameCharacteristic->addDescriptor(new BLE2902());
-
-    pFileTransferCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_FILETRANSFER,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
-    pFileTransferCharacteristic->addDescriptor(new BLE2902());
-
-    pConfigCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_GATEWAY,
-        BLECharacteristic::PROPERTY_WRITE);
-
-    pNodeCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_NODE,
-        BLECharacteristic::PROPERTY_READ);
-
-    pService->start();
-    pNodeCharacteristic->setValue(metaJson.c_str());
-
-    // 4. NOW set the callbacks after everything is created
-    if (!setBLECallbacks(defaultServerCallbacks, defaultFilenameCallbacks, defaultGatewayCallbacks))
-    {
-        Serial.println("Failed to set BLE callbacks");
-        return false;
-    }
-
-    Serial.printf("Advertising name: %s, Connect every: %d, Connect for: %d\n",
-                  advName.c_str(), bleConnectEvery, bleConnectFor);
 
     lastHublinkMillis = millis();
     return true;
@@ -161,27 +128,75 @@ String Hublink::readMetaJson()
     return content;
 }
 
-void Hublink::setCPUFrequency(uint32_t freq_mhz)
+void Hublink::setCPUFrequency(CPUFrequency freq_mhz)
 {
-    setCpuFrequencyMhz(freq_mhz);
+    setCpuFrequencyMhz(static_cast<uint32_t>(freq_mhz));
 }
 
 void Hublink::startAdvertising()
 {
-    resetBLEState();
+    // Initialize BLE stack
+    BLEDevice::init(advName.c_str());
 
+    // Create server and service
+    pServer = BLEDevice::createServer();
+    pService = pServer->createService(SERVICE_UUID);
+
+    // Create characteristics with all required properties
+    pFilenameCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILENAME,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
+    pFilenameCharacteristic->addDescriptor(new BLE2902());
+
+    pFileTransferCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILETRANSFER,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
+    pFileTransferCharacteristic->addDescriptor(new BLE2902());
+
+    pConfigCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_GATEWAY,
+        BLECharacteristic::PROPERTY_WRITE);
+
+    pNodeCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_NODE,
+        BLECharacteristic::PROPERTY_READ);
+    pNodeCharacteristic->setValue(metaJson.c_str()); // Important: Set the meta JSON value
+
+    // Start service
+    pService->start();
+
+    // Set callbacks after everything is created
+    setBLECallbacks(defaultServerCallbacks, defaultFilenameCallbacks, defaultGatewayCallbacks);
+
+    // Configure and start advertising
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->setMinInterval(0x20);
     pAdvertising->setMaxInterval(0x40);
-
     pAdvertising->start();
     delay(10); // let the BLE stack start
 }
 
 void Hublink::stopAdvertising()
 {
+    resetBLEState();
+
+    if (pService != nullptr)
+    {
+        pService->stop();
+        pService = nullptr;
+    }
+
+    // Null all BLE objects in a specific order
+    pFilenameCharacteristic = nullptr;
+    pFileTransferCharacteristic = nullptr;
+    pConfigCharacteristic = nullptr;
+    pNodeCharacteristic = nullptr;
+    pServer = nullptr;
+
     BLEDevice::getAdvertising()->stop();
-    delay(10); // let the BLE stack stop
+    delay(10);
+    BLEDevice::deinit(false); // must be false
+    delay(10);
 }
 
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
@@ -377,6 +392,7 @@ void Hublink::resetBLEState()
     currentFileName = "";
     allFilesSent = false;
     sendFilenames = false;
+    watchdogTimer = 0;
 }
 
 void Hublink::updateMtuSize()
@@ -421,18 +437,17 @@ void Hublink::sleep(uint64_t milliseconds)
                   ESP.getFreeHeap(),
                   ESP.getMinFreeHeap());
     Serial.flush();
-    delay(50);
+    delay(10); // before bed
 
     esp_sleep_enable_timer_wakeup(milliseconds * 1000); // Convert to microseconds
     esp_light_sleep_start();
-    delay(100); // wakeup delay
+    delay(10); // wakeup delay
 
     // Print memory stats after sleep
     Serial.printf("After sleep  - Free heap: %d bytes, Min free heap: %d bytes\n",
                   ESP.getFreeHeap(),
                   ESP.getMinFreeHeap());
     Serial.flush();
-    delay(50);
 }
 
 void Hublink::doBLE()
@@ -443,14 +458,14 @@ void Hublink::doBLE()
 
     // Initial sleep while waiting for potential connection
     uint64_t remainingTime = bleConnectFor * 1000;
-    esp_sleep_enable_timer_wakeup(remainingTime * 1000); // Convert to microseconds
-    esp_sleep_enable_bt_wakeup();
-    delay(10); // BLE settle
-    esp_light_sleep_start();
-    delay(10); // Minimal wakeup delay
+    // esp_sleep_enable_timer_wakeup(remainingTime * 1000); // Convert to microseconds
+    // esp_sleep_enable_bt_wakeup();
+    // delay(10); // BLE settle
+    // esp_light_sleep_start();
+    // delay(10); // Minimal wakeup delay
 
-    // Disable Bluetooth wakeup after initial sleep
-    esp_sleep_disable_bt_wakeup();
+    // // Disable Bluetooth wakeup after initial sleep
+    // esp_sleep_disable_bt_wakeup();
 
     while ((millis() - subLoopStartTime < remainingTime && !didConnect) || deviceConnected)
     {
