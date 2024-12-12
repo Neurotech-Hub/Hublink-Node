@@ -27,6 +27,6 @@ void loop() {
   hublink.sync();  // only blocks when ready
   Serial.flush();  // Add flush before sleep
   digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-  delay(1000);
-  // hublink.sleep(1000);  // optional light sleep
+  // delay(1000);
+  hublink.sleep(1000);  // optional light sleep
 }

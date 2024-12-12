@@ -12,6 +12,7 @@ Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), 
 
 bool Hublink::init(String defaultAdvName, bool allowOverride)
 {
+    // 1. Create callback objects
     if (defaultServerCallbacks == nullptr)
     {
         defaultServerCallbacks = new DefaultServerCallbacks(this);
@@ -42,12 +43,7 @@ bool Hublink::init(String defaultAdvName, bool allowOverride)
         }
     }
 
-    if (!setBLECallbacks())
-    {
-        Serial.println("Failed to set BLE callbacks");
-        return false;
-    }
-
+    // 2. Initialize SD
     if (!initSD())
     {
         Serial.println("✗ SD Card.");
@@ -55,9 +51,8 @@ bool Hublink::init(String defaultAdvName, bool allowOverride)
     }
     Serial.println("✓ SD Card.");
 
-    // Initialize BLE stack and services
+    // 3. Initialize BLE stack and create server/characteristics
     metaJson = readMetaJson();
-    // Set the advertising name based on configuration
     if (allowOverride && configuredAdvName.length() > 0)
     {
         advName = configuredAdvName;
@@ -92,6 +87,13 @@ bool Hublink::init(String defaultAdvName, bool allowOverride)
 
     pService->start();
     pNodeCharacteristic->setValue(metaJson.c_str());
+
+    // 4. NOW set the callbacks after everything is created
+    if (!setBLECallbacks(defaultServerCallbacks, defaultFilenameCallbacks, defaultGatewayCallbacks))
+    {
+        Serial.println("Failed to set BLE callbacks");
+        return false;
+    }
 
     Serial.printf("Advertising name: %s, Connect every: %d, Connect for: %d\n",
                   advName.c_str(), bleConnectEvery, bleConnectFor);
@@ -415,17 +417,22 @@ String Hublink::parseGateway(BLECharacteristic *pCharacteristic, const String &k
 void Hublink::sleep(uint64_t milliseconds)
 {
     // Print memory stats before sleep
-    // Serial.printf("Before sleep - Free heap: %d bytes, Min free heap: %d bytes\n",
-    //               ESP.getFreeHeap(),
-    //               ESP.getMinFreeHeap());
+    Serial.printf("Before sleep - Free heap: %d bytes, Min free heap: %d bytes\n",
+                  ESP.getFreeHeap(),
+                  ESP.getMinFreeHeap());
+    Serial.flush();
+    delay(50);
 
     esp_sleep_enable_timer_wakeup(milliseconds * 1000); // Convert to microseconds
     esp_light_sleep_start();
+    delay(100); // wakeup delay
 
     // Print memory stats after sleep
-    // Serial.printf("After sleep  - Free heap: %d bytes, Min free heap: %d bytes\n",
-    //               ESP.getFreeHeap(),
-    //               ESP.getMinFreeHeap());
+    Serial.printf("After sleep  - Free heap: %d bytes, Min free heap: %d bytes\n",
+                  ESP.getFreeHeap(),
+                  ESP.getMinFreeHeap());
+    Serial.flush();
+    delay(50);
 }
 
 void Hublink::doBLE()
@@ -434,12 +441,24 @@ void Hublink::doBLE()
     unsigned long subLoopStartTime = millis();
     bool didConnect = false;
 
-    while ((millis() - subLoopStartTime < bleConnectFor * 1000 && !didConnect) || deviceConnected)
+    // Initial sleep while waiting for potential connection
+    uint64_t remainingTime = bleConnectFor * 1000;
+    esp_sleep_enable_timer_wakeup(remainingTime * 1000); // Convert to microseconds
+    esp_sleep_enable_bt_wakeup();
+    delay(10); // BLE settle
+    esp_light_sleep_start();
+    delay(10); // Minimal wakeup delay
+
+    // Disable Bluetooth wakeup after initial sleep
+    esp_sleep_disable_bt_wakeup();
+
+    while ((millis() - subLoopStartTime < remainingTime && !didConnect) || deviceConnected)
     {
         updateConnectionStatus();
-        didConnect |= deviceConnected;
-        delay(100); // This existing delay is good for BLE operations
+        didConnect |= deviceConnected; // set to true if deviceConnected is true
+        delay(100);                    // service delay
     }
+
     stopAdvertising();
 }
 
@@ -451,7 +470,12 @@ void Hublink::sync()
         Serial.println("Hublink started advertising... ");
         doBLE();
         Serial.println("Done advertising.");
-        lastHublinkMillis = currentTime;
+        lastHublinkMillis = millis();
+    }
+    else if (!disable)
+    {
+        unsigned long remainingTime = (bleConnectEvery * 1000 - (currentTime - lastHublinkMillis)) / 1000;
+        Serial.printf("Time until next BLE cycle: %lu seconds\n", remainingTime);
     }
 }
 
