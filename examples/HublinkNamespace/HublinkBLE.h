@@ -140,6 +140,11 @@ namespace Hublink
             }
             serviceCount--;
         }
+
+        static void resetState()
+        {
+            m_charCount = 0;
+        }
     };
 
     class BLEServer
@@ -256,8 +261,15 @@ namespace Hublink
                 ::BLEDevice::deinit(false);
                 delay(100); // Give stack time to cleanup
 
+                // Use proper reset methods
+                BLEService::resetState();
+                descriptorCount = 0;
+                characteristicCount = 0;
+                serviceCount = 0;
+                serverCount = 0;
+
                 initialized = false;
-                delay(50); // Final cleanup pause
+                delay(50);
 
                 Serial.printf("Final Memory - Free: %d\n", ESP.getFreeHeap());
                 Serial.println("=== BLE Deinit Sequence Complete ===");

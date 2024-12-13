@@ -34,10 +34,12 @@ void startBLE()
     printMemoryStats("Before BLE Init");
 
     Hublink::BLEDevice::init("ESP32_TEST");
+    delay(50); // Let init settle
     printMemoryStats("After BLE Init");
 
     Serial.println("Creating server...");
     pServer = Hublink::BLEDevice::createServer();
+    delay(20); // Let server creation settle
     if (!pServer)
     {
         Serial.println("Failed to create server!");
@@ -47,6 +49,7 @@ void startBLE()
 
     Serial.println("Creating service...");
     pService = pServer->createService(SERVICE_UUID);
+    delay(20); // Let service creation settle
     if (!pService)
     {
         Serial.println("Failed to create service!");
@@ -101,6 +104,7 @@ void startBLE()
 
     Serial.println("Starting service...");
     pService->start();
+    delay(20); // Let service start settle
 
     Serial.println("Getting advertising handle...");
     BLEAdvertising *pAdvertising = Hublink::BLEDevice::getAdvertising();
@@ -115,6 +119,7 @@ void startBLE()
 
     Serial.println("Starting advertising...");
     pAdvertising->start();
+    delay(20); // Let advertising start settle
     Serial.println("BLE startup complete");
 
     Serial.println("=== BLE Setup Complete ===");
@@ -150,7 +155,19 @@ void setup()
 {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("\n\n\NAMESPACE-----------------");
+    Serial.println("\n\n\n----------------- HUBLINKBLE.H TEST -----------------");
+    Serial.println("Press ENTER to begin...");
+
+    // Wait for newline before starting
+    while (true)
+    {
+        if (Serial.available())
+        {
+            char c = Serial.read();
+            if (c == '\n')
+                break;
+        }
+    }
 }
 
 void loop()
