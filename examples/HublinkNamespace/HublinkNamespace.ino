@@ -30,8 +30,11 @@ void printMemoryStats(const char *label)
 
 void startBLE()
 {
-    Serial.println("Starting BLE...");
+    Serial.println("\n=== Starting BLE Setup ===");
+    printMemoryStats("Before BLE Init");
+
     Hublink::BLEDevice::init("ESP32_TEST");
+    printMemoryStats("After BLE Init");
 
     Serial.println("Creating server...");
     pServer = Hublink::BLEDevice::createServer();
@@ -40,6 +43,7 @@ void startBLE()
         Serial.println("Failed to create server!");
         return;
     }
+    printMemoryStats("After Server Creation");
 
     Serial.println("Creating service...");
     pService = pServer->createService(SERVICE_UUID);
@@ -60,7 +64,7 @@ void startBLE()
     }
 
     Serial.println("Adding descriptor to filename characteristic...");
-    pFilenameCharacteristic->addDescriptor(new Hublink::BLE2902());
+    pFilenameCharacteristic->addDescriptor();
 
     Serial.println("Creating file transfer characteristic...");
     pFileTransferCharacteristic = pService->createCharacteristic(
@@ -73,7 +77,7 @@ void startBLE()
     }
 
     Serial.println("Adding descriptor to file transfer characteristic...");
-    pFileTransferCharacteristic->addDescriptor(new Hublink::BLE2902());
+    pFileTransferCharacteristic->addDescriptor();
 
     Serial.println("Creating config characteristic...");
     pConfigCharacteristic = pService->createCharacteristic(
@@ -112,57 +116,34 @@ void startBLE()
     Serial.println("Starting advertising...");
     pAdvertising->start();
     Serial.println("BLE startup complete");
+
+    Serial.println("=== BLE Setup Complete ===");
+    printMemoryStats("Setup Complete");
 }
 
 void stopBLE()
 {
-    // First get our counts for debugging
-    Serial.printf("Before cleanup - Servers: %d, Services: %d, Characteristics: %d, Descriptors: %d\n",
-                  Hublink::serverCount, Hublink::serviceCount, Hublink::characteristicCount, Hublink::descriptorCount);
-
-    // Stop all active operations first
-    Serial.println("Stopping advertising...");
-    Hublink::BLEDevice::stopAdvertising();
-    delay(10);
-
-    // Clean up characteristics first (which will clean up descriptors)
-    Serial.println("Cleaning up characteristics...");
+    // Clear characteristics first
     pFilenameCharacteristic = nullptr;
     pFileTransferCharacteristic = nullptr;
     pConfigCharacteristic = nullptr;
     pNodeCharacteristic = nullptr;
+    delay(20); // Let characteristic cleanup settle
 
-    // Then clean up service (which will trigger characteristic destructors)
-    Serial.println("Cleaning up service...");
-    if (pService != nullptr)
+    // Stop service before clearing
+    if (pService)
     {
-        // delete pService;
+        pService->stop();
+        delay(50); // Let service stop settle
         pService = nullptr;
     }
 
-    // Then clean up server (which will trigger service destructors)
-    Serial.println("Cleaning up server...");
-    if (pServer != nullptr)
-    {
-        // delete pServer;
-        pServer = nullptr;
-    }
+    // Clear server pointer
+    pServer = nullptr;
+    delay(20); // Let pointer cleanup settle
 
-    // Now clean up core BLE
-    Serial.println("Cleaning up core BLE...");
-    delay(100); // keep connection alive
-    ::BLEDevice::deinit(false);
-    delay(100);
-
-    // Finally reset wrapper state
-    Serial.println("Resetting wrapper state...");
+    // Let BLE stack handle cleanup with delays
     Hublink::BLEDevice::deinit(false);
-    delay(100);
-
-    Serial.printf("After cleanup - Servers: %d, Services: %d, Characteristics: %d, Descriptors: %d\n",
-                  Hublink::serverCount, Hublink::serviceCount, Hublink::characteristicCount, Hublink::descriptorCount);
-
-    Serial.println("BLE cleanup complete");
 }
 
 void setup()

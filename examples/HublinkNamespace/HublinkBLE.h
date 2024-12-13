@@ -13,6 +13,19 @@ namespace Hublink
     static int characteristicCount = 0;
     static int descriptorCount = 0;
 
+    struct MemoryStats
+    {
+        static void print(const char *label)
+        {
+            Serial.printf("MEM [%s] Free: %d, Min Free: %d, Largest Block: %d\n",
+                          label,
+                          ESP.getFreeHeap(),
+                          ESP.getMinFreeHeap(),
+                          ESP.getMaxAllocHeap());
+            delay(50);
+        }
+    };
+
     class BLE2902 : public ::BLE2902
     {
     public:
@@ -23,7 +36,8 @@ namespace Hublink
     {
     private:
         ::BLECharacteristic *m_pCharacteristic;
-        BLE2902 *m_p2902 = nullptr; // Track single descriptor
+        BLE2902 *m_descriptor = nullptr; // Optional descriptor, only created when needed
+        bool m_hasDescriptor = false;
 
     public:
         static const uint32_t PROPERTY_READ = ::BLECharacteristic::PROPERTY_READ;
@@ -31,26 +45,42 @@ namespace Hublink
         static const uint32_t PROPERTY_NOTIFY = ::BLECharacteristic::PROPERTY_NOTIFY;
         static const uint32_t PROPERTY_INDICATE = ::BLECharacteristic::PROPERTY_INDICATE;
 
-        BLECharacteristic(::BLECharacteristic *characteristic) : m_pCharacteristic(characteristic) { characteristicCount++; }
+        BLECharacteristic() : m_pCharacteristic(nullptr), m_hasDescriptor(false) {}
 
-        void addDescriptor(BLE2902 *descriptor)
+        BLECharacteristic(::BLECharacteristic *characteristic) : m_pCharacteristic(characteristic), m_hasDescriptor(false)
         {
-            if (descriptor && m_pCharacteristic)
+            characteristicCount++;
+            MemoryStats::print("Characteristic Constructor");
+        }
+
+        void addDescriptor()
+        {
+            MemoryStats::print("Before Add Descriptor");
+            if (m_pCharacteristic && !m_hasDescriptor)
             {
+                m_descriptor = new BLE2902(); // Create only when needed
                 descriptorCount++;
-                m_p2902 = descriptor; // Store descriptor pointer
-                m_pCharacteristic->addDescriptor(descriptor);
+                m_pCharacteristic->addDescriptor(m_descriptor);
+                m_hasDescriptor = true;
             }
+            MemoryStats::print("After Add Descriptor");
         }
 
         operator ::BLECharacteristic *() { return m_pCharacteristic; }
 
+        void releaseDescriptor()
+        {
+            if (m_hasDescriptor)
+            {
+                m_hasDescriptor = false;
+                descriptorCount--;
+            }
+        }
+
         ~BLECharacteristic()
         {
-            if (m_p2902)
+            if (m_hasDescriptor)
             {
-                delete m_p2902;
-                m_p2902 = nullptr;
                 descriptorCount--;
             }
             characteristicCount--;
@@ -61,20 +91,14 @@ namespace Hublink
     {
     private:
         ::BLEService *m_pService;
-        std::vector<BLECharacteristic *> m_characteristics; // Track characteristics we create
+        static BLECharacteristic m_characteristics[4]; // Static array
+        static int m_charCount;
 
     public:
-        BLEService(::BLEService *service) : m_pService(service) { serviceCount++; }
-
-        BLECharacteristic *createCharacteristic(const char *uuid, uint32_t properties)
+        BLEService(::BLEService *service) : m_pService(service)
         {
-            if (!m_pService)
-            {
-                return nullptr;
-            }
-            auto characteristic = new BLECharacteristic(m_pService->createCharacteristic(uuid, properties));
-            m_characteristics.push_back(characteristic);
-            return characteristic;
+            serviceCount++;
+            m_charCount = 0;
         }
 
         void start()
@@ -95,14 +119,25 @@ namespace Hublink
 
         operator ::BLEService *() { return m_pService; }
 
+        BLECharacteristic *createCharacteristic(const char *uuid, uint32_t properties)
+        {
+            if (m_charCount >= 4)
+                return nullptr;
+
+            ::BLECharacteristic *coreChar = m_pService->createCharacteristic(uuid, properties);
+            if (!coreChar)
+                return nullptr;
+
+            m_characteristics[m_charCount] = BLECharacteristic(coreChar);
+            return &m_characteristics[m_charCount++];
+        }
+
         ~BLEService()
         {
-            // Clean up characteristics we created
-            for (auto characteristic : m_characteristics)
+            for (int i = 0; i < m_charCount; i++)
             {
-                delete characteristic;
+                m_characteristics[i].releaseDescriptor();
             }
-            m_characteristics.clear();
             serviceCount--;
         }
     };
@@ -111,33 +146,47 @@ namespace Hublink
     {
     private:
         ::BLEServer *m_pServer;
-        std::vector<BLEService *> m_services; // Track services we create
+        static BLEService m_service; // Static service instance
 
     public:
-        BLEServer(::BLEServer *server) : m_pServer(server) { serverCount++; }
+        BLEServer() : m_pServer(nullptr) {}
+
+        BLEServer(::BLEServer *server) : m_pServer(server)
+        {
+            serverCount++;
+            MemoryStats::print("Server Constructor");
+        }
 
         BLEService *createService(const char *uuid)
         {
             if (!m_pServer)
-            {
                 return nullptr;
-            }
-            auto service = new BLEService(m_pServer->createService(uuid));
-            m_services.push_back(service);
-            return service;
+
+            ::BLEService *coreService = m_pServer->createService(uuid);
+            if (!coreService)
+                return nullptr;
+
+            m_service = BLEService(coreService);
+            return &m_service;
         }
 
         operator ::BLEServer *() { return m_pServer; }
 
         ~BLEServer()
         {
-            // Clean up services we created
-            for (auto service : m_services)
-            {
-                delete service;
-            }
-            m_services.clear();
             serverCount--;
+        }
+
+        void stopAllServices()
+        {
+            m_service.stop();
+        }
+
+        BLEService *getService() { return &m_service; }
+        void clearService() { /* No direct access needed */ }
+        void stopService()
+        {
+            m_service.stop();
         }
     };
 
@@ -145,91 +194,98 @@ namespace Hublink
     {
     private:
         static bool initialized;
-        static BLEServer *m_pServer; // Change back to pointer
+        static ::BLEServer *m_pCoreServer;         // Core server pointer
+        static Hublink::BLEServer m_serverWrapper; // Static wrapper instance
         static BLEAdvertising *m_bleAdvertising;
 
     public:
         static void init(String deviceName)
         {
-            Serial.println("  + BLEDevice::init called");
+            Serial.println("=== BLE Init Sequence Start ===");
+            Serial.printf("Initial Memory - Free: %d, Min: %d, Block: %d\n",
+                          ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+
             if (!initialized)
             {
-                Serial.println("  + Cleaning up any previous state");
-                if (m_pServer != nullptr)
-                {
-                    Serial.println("  + Deleting previous server");
-                    delete m_pServer;
-                    m_pServer = nullptr;
-                }
-                m_bleAdvertising = nullptr;
+                Serial.println("1. Starting BLE initialization");
+                Serial.printf("Memory before core init - Free: %d\n", ESP.getFreeHeap());
 
-                Serial.println("  + Calling core BLE init");
+                // Core BLE init (includes btStart)
                 ::BLEDevice::init(deviceName);
-                Serial.println("  + Core BLE init complete");
+                Serial.printf("Memory after BLEDevice init - Free: %d\n", ESP.getFreeHeap());
+                delay(50);
+
+                // Controller state
+                esp_bt_controller_status_t controller_state = esp_bt_controller_get_status();
+                Serial.printf("BLE Controller state: %d (2=enabled)\n", controller_state);
+                Serial.printf("Memory after controller check - Free: %d\n", ESP.getFreeHeap());
+                delay(50);
+
                 initialized = true;
             }
             else
             {
-                Serial.println("  + Already initialized, skipping");
+                Serial.println("Already initialized, skipping");
             }
+
+            Serial.printf("Final Memory - Free: %d, Min: %d, Block: %d\n",
+                          ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+            Serial.println("=== BLE Init Sequence Complete ===");
         }
 
         static void deinit(bool release_memory = false)
         {
             if (initialized)
             {
-                Serial.println("  - Resetting wrapper state");
+                Serial.println("=== BLE Deinit Sequence Start ===");
+                Serial.printf("Memory before stop - Free: %d\n", ESP.getFreeHeap());
+
+                // Stop advertising first
+                if (m_bleAdvertising)
+                {
+                    stopAdvertising();
+                    delay(20); // Let advertising stop settle
+                }
+
+                // Clear our pointers first
+                m_pCoreServer = nullptr;
                 m_bleAdvertising = nullptr;
-                m_pServer = nullptr;
+                delay(50); // Let pointer cleanup settle
+
+                // Core BLE cleanup
+                ::BLEDevice::deinit(false);
+                delay(100); // Give stack time to cleanup
+
                 initialized = false;
+                delay(50); // Final cleanup pause
+
+                Serial.printf("Final Memory - Free: %d\n", ESP.getFreeHeap());
+                Serial.println("=== BLE Deinit Sequence Complete ===");
             }
         }
 
-        static BLEServer *createServer()
+        static Hublink::BLEServer *createServer()
         {
-            Serial.println("  + createServer called");
+            MemoryStats::print("Before createServer");
+
             if (!initialized)
             {
-                Serial.println("  + Cannot create server - BLE not initialized");
+                Serial.println("Cannot create server - BLE not initialized");
                 return nullptr;
             }
 
-            if (m_pServer != nullptr)
-            {
-                Serial.println("  + Returning existing server");
-                return m_pServer;
-            }
+            Serial.println("Creating core server...");
+            m_pCoreServer = ::BLEDevice::createServer();
+            MemoryStats::print("After core server creation");
 
-            // Add delay to ensure BT stack is ready
-            Serial.println("  + Waiting for BT stack...");
-            delay(100);
-
-            Serial.println("  + Creating core server");
-            ::BLEServer *coreServer = ::BLEDevice::createServer();
-            if (coreServer == nullptr)
+            if (m_pCoreServer == nullptr)
             {
-                Serial.println("  + Failed to create core server");
+                Serial.println("Core server creation failed");
                 return nullptr;
             }
 
-            Serial.println("  + Creating server wrapper");
-            try
-            {
-                m_pServer = new BLEServer(coreServer);
-                if (m_pServer == nullptr)
-                {
-                    Serial.println("  + Failed to create server wrapper");
-                    return nullptr;
-                }
-                Serial.println("  + Server wrapper created successfully");
-            }
-            catch (...)
-            {
-                Serial.println("  + Exception creating server wrapper");
-                return nullptr;
-            }
-
-            return m_pServer;
+            m_serverWrapper = Hublink::BLEServer(m_pCoreServer);
+            return &m_serverWrapper;
         }
 
         static BLEAdvertising *getAdvertising()
@@ -256,7 +312,11 @@ namespace Hublink
 
 // Initialize static members
 bool Hublink::BLEDevice::initialized = false;
-Hublink::BLEServer *Hublink::BLEDevice::m_pServer = nullptr;
+::BLEServer *Hublink::BLEDevice::m_pCoreServer = nullptr;
+Hublink::BLEServer Hublink::BLEDevice::m_serverWrapper;
 BLEAdvertising *Hublink::BLEDevice::m_bleAdvertising = nullptr;
+Hublink::BLEService Hublink::BLEServer::m_service(nullptr);
+Hublink::BLECharacteristic Hublink::BLEService::m_characteristics[4];
+int Hublink::BLEService::m_charCount = 0;
 
 #endif // HUBLINK_BLE_H_
