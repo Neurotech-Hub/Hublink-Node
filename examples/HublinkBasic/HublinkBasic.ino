@@ -15,22 +15,23 @@ void setup()
   SPI.begin(SCK, MISO, MOSI, cs);
   if (hublink.init())
   {
+    Serial.println("\n\n\n----------------------------------");
     Serial.println("✓ Hublink.");
   }
   else
   {
     Serial.println("✗ Failed.");
-    Serial.flush();
     while (1)
     {
     }
   }
-  Serial.flush();
+  // Serial.flush();
 }
 
 void loop()
 {
   hublink.sync(); // only blocks when ready
-  Serial.flush(); // Add flush before sleep
-  hublink.sleep(1000); // optional light sleep
+  // Serial.flush(); // Add flush before sleep
+  // hublink.sleep(1000); // optional light sleep
+  delay(1000);
 }

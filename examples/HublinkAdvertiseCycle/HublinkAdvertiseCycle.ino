@@ -1,22 +1,29 @@
 #include <BLEDevice.h>
 #include <BLEServer.h>
-#include <BLEAdvertising.h>
 #include <BLEUtils.h>
+#include <BLE2902.h>
 
-#define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define SERVICE_UUID "57617368-5501-0001-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID_FILENAME "57617368-5502-0001-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID_FILETRANSFER "57617368-5503-0001-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID_GATEWAY "57617368-5504-0001-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID_NODE "57617368-5505-0001-8000-00805f9b34fb"
 
 int lastMinFreeHeap = 0;
 BLEServer *pServer = nullptr;
 BLEService *pService = nullptr;
-BLECharacteristic *pCharacteristic = nullptr;
+BLECharacteristic *pFilenameCharacteristic;
+BLECharacteristic *pFileTransferCharacteristic;
+BLECharacteristic *pConfigCharacteristic;
+BLECharacteristic *pNodeCharacteristic;
 
 void printMemoryStats(const char *label)
 {
     int currentMinFreeHeap = ESP.getMinFreeHeap();
     int heapDiff = currentMinFreeHeap - lastMinFreeHeap;
 
-    Serial.printf("%s - Min free heap: %d bytes (Change: %d bytes)\n",
+    Serial.printf("[%lu] %s - Min free heap: %d bytes (Change: %d bytes)\n",
+                  millis(),
                   label,
                   currentMinFreeHeap,
                   lastMinFreeHeap == 0 ? 0 : heapDiff);
@@ -35,8 +42,22 @@ void startBLE()
     pService = pServer->createService(BLEUUID(SERVICE_UUID)); // fixed leak! BLEServer.cpp
 
     // Create characteristic, no leaks
-    pCharacteristic = pService->createCharacteristic(
-        BLEUUID(CHARACTERISTIC_UUID),
+    pFilenameCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILENAME,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
+    pFilenameCharacteristic->addDescriptor(new BLE2902()); // !! fixed leak! BLE2902.cpp, BLECharacteristic.cpp
+
+    pFileTransferCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILETRANSFER,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
+    pFileTransferCharacteristic->addDescriptor(new BLE2902());
+
+    pConfigCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_GATEWAY,
+        BLECharacteristic::PROPERTY_WRITE);
+
+    pNodeCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_NODE,
         BLECharacteristic::PROPERTY_READ);
 
     // Start service
@@ -55,10 +76,7 @@ void stopBLE()
         pService->stop();
         pService = nullptr;
     }
-    if (pServer != nullptr)
-    {
-        pServer = nullptr;
-    }
+    pServer = nullptr;
     BLEDevice::deinit(false); // must be false!!
 }
 
@@ -72,11 +90,12 @@ void loop()
 {
     printMemoryStats("Before BLE Start");
     startBLE();
-    delay(200);
     printMemoryStats("After BLE Start");
+
+    delay(5000); // advertise
 
     stopBLE();
     printMemoryStats("After BLE Stop");
 
-    delay(200);
+    delay(5000);
 }

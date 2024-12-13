@@ -140,29 +140,28 @@ void Hublink::startAdvertising()
 
     // Create server and service
     pServer = BLEDevice::createServer();
-    pService = pServer->createService(SERVICE_UUID);
+    pService = pServer->createService(BLEUUID(SERVICE_UUID));
 
-    // !! chars here leak, but not in basic example
     // Create characteristics with all required properties
     pFilenameCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_FILENAME,
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
-    // pFilenameCharacteristic->addDescriptor(new BLE2902()); // !! this leaks
+    pFilenameCharacteristic->addDescriptor(new BLE2902());
 
-    // pFileTransferCharacteristic = pService->createCharacteristic(
-    //     CHARACTERISTIC_UUID_FILETRANSFER,
-    //     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
-    // pFileTransferCharacteristic->addDescriptor(new BLE2902());
+    pFileTransferCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_FILETRANSFER,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
+    pFileTransferCharacteristic->addDescriptor(new BLE2902());
 
-    // pConfigCharacteristic = pService->createCharacteristic(
-    //     CHARACTERISTIC_UUID_GATEWAY,
-    //     BLECharacteristic::PROPERTY_WRITE);
+    pConfigCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_GATEWAY,
+        BLECharacteristic::PROPERTY_WRITE);
 
-    // pNodeCharacteristic = pService->createCharacteristic(
-    //     CHARACTERISTIC_UUID_NODE,
-    //     BLECharacteristic::PROPERTY_READ);
+    pNodeCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID_NODE,
+        BLECharacteristic::PROPERTY_READ);
 
-        // pNodeCharacteristic->setValue(metaJson.c_str()); // Important: Set the meta JSON value
+    pNodeCharacteristic->setValue(metaJson.c_str()); // Important: Set the meta JSON value
 
     // Start service
     pService->start();
@@ -172,14 +171,16 @@ void Hublink::startAdvertising()
 
     // Configure and start advertising
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->setMinInterval(0x20);
-    pAdvertising->setMaxInterval(0x40);
+    // pAdvertising->setMinInterval(0x20);
+    // pAdvertising->setMaxInterval(0x40);
     pAdvertising->start();
     delay(10); // let the BLE stack start
 }
 
 void Hublink::stopAdvertising()
 {
+    BLEDevice::getAdvertising()->stop();
+    delay(10);
     resetBLEState();
 
     if (pService != nullptr)
@@ -195,8 +196,6 @@ void Hublink::stopAdvertising()
     pNodeCharacteristic = nullptr;
     pServer = nullptr;
 
-    BLEDevice::getAdvertising()->stop();
-    delay(10);
     BLEDevice::deinit(false); // must be false
     delay(10);
 }
@@ -434,27 +433,15 @@ String Hublink::parseGateway(BLECharacteristic *pCharacteristic, const String &k
 
 void Hublink::sleep(uint64_t milliseconds)
 {
-    // Print memory stats before sleep
-    Serial.printf("Before sleep - Free heap: %d bytes, Min free heap: %d bytes\n",
-                  ESP.getFreeHeap(),
-                  ESP.getMinFreeHeap());
-    Serial.flush();
-    delay(10); // before bed
-
     esp_sleep_enable_timer_wakeup(milliseconds * 1000); // Convert to microseconds
     esp_light_sleep_start();
     delay(10); // wakeup delay
-
-    // Print memory stats after sleep
-    Serial.printf("After sleep  - Free heap: %d bytes, Min free heap: %d bytes\n",
-                  ESP.getFreeHeap(),
-                  ESP.getMinFreeHeap());
-    Serial.flush();
 }
 
 void Hublink::doBLE()
 {
     startAdvertising();
+
     unsigned long subLoopStartTime = millis();
     bool didConnect = false;
 
@@ -477,6 +464,12 @@ void Hublink::doBLE()
     }
 
     stopAdvertising();
+    delay(10);
+    // Print heap stats after BLE cycle
+    Serial.printf("%lu ms - Free heap: %d bytes, Min free heap: %d bytes\n",
+                  millis(),
+                  ESP.getFreeHeap(),
+                  ESP.getMinFreeHeap());
 }
 
 void Hublink::sync()
