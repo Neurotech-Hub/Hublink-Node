@@ -84,6 +84,7 @@ void setup()
 {
     Serial.begin(115200);
     delay(1000);
+    Serial.println("\n\n\nSTARTUP-----------------------------");
 }
 
 void loop()
@@ -92,10 +93,10 @@ void loop()
     startBLE();
     printMemoryStats("After BLE Start");
 
-    delay(5000); // advertise
+    delay(1000); // advertise
 
     stopBLE();
     printMemoryStats("After BLE Stop");
 
-    delay(5000);
+    delay(1000);
 }
