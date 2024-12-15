@@ -1,50 +1,30 @@
 #include "Hublink.h"
 
-Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency) : cs(chipSelect), clkFreq(clockFrequency),
-                                                                piReadyForFilenames(false), deviceConnected(false),
-                                                                currentFileName(""), allFilesSent(false),
-                                                                watchdogTimer(0), sendFilenames(false),
-                                                                defaultServerCallbacks(nullptr),
-                                                                defaultFilenameCallbacks(nullptr),
-                                                                defaultGatewayCallbacks(nullptr)
+// Define global variables
+Hublink *g_hublink = nullptr;
+
+// Define static members
+HublinkServerCallbacks Hublink::serverCallbacks;
+HublinkFilenameCallbacks Hublink::filenameCallbacks;
+HublinkGatewayCallbacks Hublink::gatewayCallbacks;
+
+Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency)
+    : cs(chipSelect),
+      clkFreq(clockFrequency),
+      piReadyForFilenames(false),
+      deviceConnected(false),
+      currentFileName(""),
+      allFilesSent(false),
+      watchdogTimer(0),
+      sendFilenames(false)
 {
+    g_hublink = this; // Set the global pointer
 }
 
 bool Hublink::init(String defaultAdvName, bool allowOverride)
 {
     // Set CPU frequency to minimum required for radio operation
     setCPUFrequency(CPUFrequency::MHz_80);
-
-    // 1. Create callback objects
-    if (defaultServerCallbacks == nullptr)
-    {
-        defaultServerCallbacks = new DefaultServerCallbacks(this);
-        if (defaultServerCallbacks == nullptr)
-        {
-            Serial.println("Failed to allocate server callbacks");
-            return false;
-        }
-    }
-
-    if (defaultFilenameCallbacks == nullptr)
-    {
-        defaultFilenameCallbacks = new DefaultFilenameCallback(this);
-        if (defaultFilenameCallbacks == nullptr)
-        {
-            Serial.println("Failed to allocate filename callbacks");
-            return false;
-        }
-    }
-
-    if (defaultGatewayCallbacks == nullptr)
-    {
-        defaultGatewayCallbacks = new DefaultGatewayCallback(this);
-        if (defaultGatewayCallbacks == nullptr)
-        {
-            Serial.println("Failed to allocate gateway callbacks");
-            return false;
-        }
-    }
 
     // 2. Initialize SD
     if (!initSD())
@@ -135,67 +115,89 @@ void Hublink::setCPUFrequency(CPUFrequency freq_mhz)
 
 void Hublink::startAdvertising()
 {
-    // Initialize BLE stack
-    BLEDevice::init(advName.c_str());
+    NimBLEDevice::init(advName.c_str());
 
-    // Create server and service
-    pServer = BLEDevice::createServer();
-    pService = pServer->createService(BLEUUID(SERVICE_UUID));
+    pServer = NimBLEDevice::createServer();
+    if (!pServer)
+    {
+        Serial.println("Failed to create server!");
+        return;
+    }
 
-    // Create characteristics with all required properties
+    // Set callbacks using static instances
+    pServer->setCallbacks(&serverCallbacks);
+
+    pService = pServer->createService(SERVICE_UUID);
+
     pFilenameCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_FILENAME,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
-    pFilenameCharacteristic->addDescriptor(new BLE2902());
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE);
+    pFilenameCharacteristic->setCallbacks(&filenameCallbacks); // Set characteristic callback
 
     pFileTransferCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_FILETRANSFER,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
-    pFileTransferCharacteristic->addDescriptor(new BLE2902());
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::INDICATE);
 
     pConfigCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_GATEWAY,
-        BLECharacteristic::PROPERTY_WRITE);
+        NIMBLE_PROPERTY::WRITE);
+    pConfigCharacteristic->setCallbacks(&gatewayCallbacks); // Set characteristic callback
 
     pNodeCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_NODE,
-        BLECharacteristic::PROPERTY_READ);
+        NIMBLE_PROPERTY::READ);
 
-    pNodeCharacteristic->setValue(metaJson.c_str()); // Important: Set the meta JSON value
+    pNodeCharacteristic->setValue(metaJson.c_str());
 
-    // Start service
     pService->start();
 
-    // Set callbacks after everything is created
-    setBLECallbacks(defaultServerCallbacks, defaultFilenameCallbacks, defaultGatewayCallbacks);
-
-    // Configure and start advertising
-    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    NimBLEAdvertisementData scanResponse;
+    scanResponse.setName(advName.c_str());
+    pAdvertising->setScanResponseData(scanResponse);
     pAdvertising->start();
-    delay(10); // let the BLE stack start
 }
 
 void Hublink::stopAdvertising()
 {
-    BLEDevice::getAdvertising()->stop();
-    delay(10);
-    resetBLEState();
-
-    if (pService != nullptr)
+    // Critical: Clean up callbacks before deinit to prevent crashes
+    if (pServer != nullptr)
     {
-        pService->stop();
-        pService = nullptr;
+        // First disconnect any connected clients
+        if (pServer->getConnectedCount() > 0)
+        {
+            pServer->disconnect(0);
+            delay(50); // Give time for disconnect to complete
+        }
+
+        // Remove all callbacks before deinit
+        cleanupCallbacks();
+
+        // Stop advertising
+        NimBLEDevice::getAdvertising()->stop();
+        delay(50);
     }
 
-    // Null all BLE objects in a specific order
-    pFilenameCharacteristic = nullptr;
-    pFileTransferCharacteristic = nullptr;
-    pConfigCharacteristic = nullptr;
-    pNodeCharacteristic = nullptr;
-    pServer = nullptr;
+    resetBLEState();
+    NimBLEDevice::deinit(true);
+}
 
-    BLEDevice::deinit(false); // must be false
-    delay(10);
+void Hublink::cleanupCallbacks()
+{
+    // Remove all callbacks before deinit to prevent crashes
+    if (pServer != nullptr)
+    {
+        pServer->setCallbacks(nullptr);
+    }
+    if (pFilenameCharacteristic != nullptr)
+    {
+        pFilenameCharacteristic->setCallbacks(nullptr);
+    }
+    if (pConfigCharacteristic != nullptr)
+    {
+        pConfigCharacteristic->setCallbacks(nullptr);
+    }
 }
 
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
@@ -204,41 +206,19 @@ bool Hublink::initSD()
     return SD.begin(cs, SPI, clkFreq);
 }
 
-bool Hublink::setBLECallbacks(BLEServerCallbacks *newServerCallbacks,
-                              BLECharacteristicCallbacks *newFilenameCallbacks,
-                              BLECharacteristicCallbacks *newConfigCallbacks)
-{
-    if (!pServer || !pFilenameCharacteristic || !pConfigCharacteristic)
-    {
-        return false;
-    }
-
-    if (newServerCallbacks != nullptr)
-    {
-        pServer->setCallbacks(newServerCallbacks);
-    }
-
-    if (newFilenameCallbacks != nullptr)
-    {
-        pFilenameCharacteristic->setCallbacks(newFilenameCallbacks);
-    }
-
-    if (newConfigCallbacks != nullptr)
-    {
-        pConfigCharacteristic->setCallbacks(newConfigCallbacks);
-    }
-
-    return true;
-}
-
 void Hublink::updateConnectionStatus()
 {
     // Watchdog timer
     if (deviceConnected && (millis() - watchdogTimer > WATCHDOG_TIMEOUT_MS))
     {
         Serial.println("Hublink node timeout detected, disconnecting...");
-        pServer->disconnect(pServer->getConnId());
-        delay(500); // Give BLE stack time to clean up
+        // Disconnect using the connection handle
+        if (pServer->getConnectedCount() > 0)
+        {
+            NimBLEConnInfo connInfo = pServer->getPeerInfo(0); // Get first connected peer
+            pServer->disconnect(connInfo.getConnHandle());
+        }
+        delay(10); // Give BLE stack time to clean up
     }
 
     // Handle file transfers when connected
@@ -375,7 +355,7 @@ void Hublink::onConnect()
     Serial.println("Hublink node connected.");
     deviceConnected = true;
     watchdogTimer = millis();
-    BLEDevice::setMTU(NEGOTIATE_MTU_SIZE);
+    NimBLEDevice::setMTU(NEGOTIATE_MTU_SIZE);
 }
 
 void Hublink::onDisconnect()
@@ -396,7 +376,7 @@ void Hublink::resetBLEState()
 
 void Hublink::updateMtuSize()
 {
-    mtuSize = BLEDevice::getMTU() - MTU_HEADER_SIZE;
+    mtuSize = NimBLEDevice::getMTU() - MTU_HEADER_SIZE;
 }
 
 String Hublink::parseGateway(BLECharacteristic *pCharacteristic, const String &key)
@@ -438,11 +418,12 @@ void Hublink::sleep(uint64_t milliseconds)
 
 void Hublink::doBLE()
 {
+    printMemStats("BLE Start");
+
     startAdvertising();
     unsigned long subLoopStartTime = millis();
     bool didConnect = false;
 
-    // Remove the light sleep attempt since it's not helping
     while ((millis() - subLoopStartTime < bleConnectFor * 1000 && !didConnect) || deviceConnected)
     {
         updateConnectionStatus();
@@ -451,7 +432,8 @@ void Hublink::doBLE()
     }
 
     stopAdvertising();
-    delay(10);
+
+    printMemStats("BLE End");
 }
 
 void Hublink::sync()
@@ -471,24 +453,26 @@ void Hublink::sync()
     }
 }
 
-// Add destructor to clean up callback instances
-Hublink::~Hublink()
+void Hublink::printMemStats(const char *prefix)
 {
-    if (defaultServerCallbacks != nullptr)
+    static uint32_t lastMinFreeHeap = 0;
+    uint32_t currentMinFreeHeap = ESP.getMinFreeHeap();
+
+    Serial.printf("%s - Free: %lu, Min: %lu, Max Block: %lu, PSRAM: %lu",
+                  prefix,
+                  ESP.getFreeHeap(),
+                  currentMinFreeHeap,
+                  ESP.getMaxAllocHeap(),
+                  ESP.getFreePsram());
+
+    // Only show the difference if this isn't the first call
+    if (lastMinFreeHeap > 0)
     {
-        delete defaultServerCallbacks;
-        defaultServerCallbacks = nullptr;
+        int32_t diff = currentMinFreeHeap - lastMinFreeHeap;
+        Serial.printf(", Min Diff: %+ld", diff); // %+ld will show the sign (+ or -) before the number
     }
 
-    if (defaultFilenameCallbacks != nullptr)
-    {
-        delete defaultFilenameCallbacks;
-        defaultFilenameCallbacks = nullptr;
-    }
+    Serial.println(); // End the line
 
-    if (defaultGatewayCallbacks != nullptr)
-    {
-        delete defaultGatewayCallbacks;
-        defaultGatewayCallbacks = nullptr;
-    }
+    lastMinFreeHeap = currentMinFreeHeap;
 }

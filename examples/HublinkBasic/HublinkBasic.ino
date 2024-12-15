@@ -26,12 +26,12 @@ void setup()
   }
 
   // Wait for serial input while flashing LED
-  Serial.println("Press any key to continue...");
-  while (!Serial.available())
-  {
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); // Toggle LED
-    delay(200);
-  }
+  // Serial.println("Press any key to continue...");
+  // while (!Serial.available())
+  // {
+  //   digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); // Toggle LED
+  //   delay(200);
+  // }
   digitalWrite(LED_BUILTIN, LOW); // Turn LED off before continuing
 }
 
