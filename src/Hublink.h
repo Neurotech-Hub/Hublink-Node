@@ -10,6 +10,8 @@
 #include <esp_sleep.h>
 #include <ArduinoJson.h>
 #include "esp_system.h"
+#include <vector>
+#include <string>
 
 // BLE UUIDs
 #define SERVICE_UUID "57617368-5501-0001-8000-00805f9b34fb"
@@ -47,6 +49,9 @@ class EmptyCharCallbacks : public NimBLECharacteristicCallbacks
     void onWrite(NimBLECharacteristic *pCharacteristic, NimBLEConnInfo &connInfo) override {}
 };
 
+// Add near the top with other definitions
+typedef void (*TimestampCallback)(uint32_t timestamp);
+
 class Hublink
 {
 public:
@@ -60,9 +65,6 @@ public:
     void stopAdvertising();
     void updateConnectionStatus();
     void updateMtuSize();
-    bool setBLECallbacks(NimBLEServerCallbacks *serverCallbacks = nullptr,
-                         NimBLECharacteristicCallbacks *filenameCallbacks = nullptr,
-                         NimBLECharacteristicCallbacks *configCallbacks = nullptr);
     String readMetaJson();
 
     // Connection events
@@ -79,7 +81,7 @@ public:
     String currentFileName;
     bool deviceConnected = false;
     bool sendFilenames = false;
-    String validExtensions[4] = {".txt", ".csv", ".log", ".json"};
+    std::vector<String> validExtensions = {".txt", ".csv", ".log", ".json"};
 
     // BLE configuration
     uint32_t bleConnectEvery = 300;
@@ -97,26 +99,14 @@ public:
     friend class HublinkFilenameCallbacks;
     friend class HublinkGatewayCallbacks;
 
+    // Public methods
+    void setTimestampCallback(TimestampCallback callback);
+    void addValidExtension(const String &extension);
+    void clearValidExtensions();
+    void setValidExtensions(const std::vector<String> &extensions);
+    const std::vector<String> &getValidExtensions() const;
+
 protected:
-    // Move these virtual methods to protected section
-    virtual void handleFilenameWrite(NimBLECharacteristic *pCharacteristic)
-    {
-        String filename = String(pCharacteristic->getValue().c_str());
-        Serial.println("Filename requested: " + filename);
-        currentFileName = filename;
-    }
-
-    virtual void handleGatewayWrite(NimBLECharacteristic *pCharacteristic)
-    {
-        String rtc = parseGateway(pCharacteristic, "rtc");
-        if (rtc.length() > 0)
-        {
-            Serial.println("Gateway settings received:");
-            Serial.println("rtc: " + rtc);
-        }
-        sendFilenames = true;
-    }
-
     // BLE characteristics
     NimBLECharacteristic *pFilenameCharacteristic;
     NimBLECharacteristic *pFileTransferCharacteristic;
@@ -150,19 +140,20 @@ protected:
 
     unsigned long lastHublinkMillis;
 
-    void createCallbacks();
-
     void printMemStats(const char *prefix);
 
-    // Static callback instances
+    // Static callback instances - these must exist for the lifetime of the BLE connection
     static HublinkServerCallbacks serverCallbacks;
     static HublinkFilenameCallbacks filenameCallbacks;
     static HublinkGatewayCallbacks gatewayCallbacks;
 
-private:
-    // ... keep private members ...
+    // Add to protected members
+    TimestampCallback _timestampCallback = nullptr;
+    void handleTimestamp(const String &timestamp);
 
-    // Callback cleanup is critical for proper NimBLE deinit
+private:
+    // Critical: Must be called before NimBLE deinit to prevent crashes
+    // Removes all callbacks to prevent dangling references during deinit
     void cleanupCallbacks();
 };
 
@@ -209,10 +200,10 @@ public:
     {
         if (g_hublink && pCharacteristic)
         {
-            String rtc = g_hublink->parseGateway(pCharacteristic, "rtc");
-            if (rtc.length() > 0)
+            String timestamp = g_hublink->parseGateway(pCharacteristic, "timestamp");
+            if (timestamp.length() > 0)
             {
-                Serial.println("Gateway settings received: " + rtc);
+                g_hublink->handleTimestamp(timestamp);
             }
             g_hublink->sendFilenames = true;
         }

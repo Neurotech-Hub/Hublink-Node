@@ -162,6 +162,7 @@ void Hublink::startAdvertising()
 void Hublink::stopAdvertising()
 {
     // Critical: Clean up callbacks before deinit to prevent crashes
+    // Order matters: disconnect clients -> remove callbacks -> stop advertising -> deinit
     if (pServer != nullptr)
     {
         // First disconnect any connected clients
@@ -379,7 +380,7 @@ void Hublink::updateMtuSize()
     mtuSize = NimBLEDevice::getMTU() - MTU_HEADER_SIZE;
 }
 
-String Hublink::parseGateway(BLECharacteristic *pCharacteristic, const String &key)
+String Hublink::parseGateway(NimBLECharacteristic *pCharacteristic, const String &key)
 {
     std::string value = pCharacteristic->getValue().c_str();
     if (value.empty())
@@ -475,4 +476,50 @@ void Hublink::printMemStats(const char *prefix)
     Serial.println(); // End the line
 
     lastMinFreeHeap = currentMinFreeHeap;
+}
+
+void Hublink::setTimestampCallback(TimestampCallback callback)
+{
+    _timestampCallback = callback;
+}
+
+void Hublink::handleTimestamp(const String &timestamp)
+{
+    if (_timestampCallback != nullptr && timestamp.length() > 0)
+    {
+        uint32_t unix_timestamp = timestamp.toInt();
+        _timestampCallback(unix_timestamp);
+    }
+}
+
+void Hublink::addValidExtension(const String &extension)
+{
+    // Convert to lowercase for case-insensitive comparison
+    String lowerExt = extension;
+    lowerExt.toLowerCase();
+    // Add dot if not present
+    if (!lowerExt.startsWith("."))
+    {
+        lowerExt = "." + lowerExt;
+    }
+    validExtensions.push_back(lowerExt);
+}
+
+void Hublink::clearValidExtensions()
+{
+    validExtensions.clear();
+}
+
+void Hublink::setValidExtensions(const std::vector<String> &extensions)
+{
+    validExtensions.clear();
+    for (const String &ext : extensions)
+    {
+        addValidExtension(ext);
+    }
+}
+
+const std::vector<String> &Hublink::getValidExtensions() const
+{
+    return validExtensions;
 }
