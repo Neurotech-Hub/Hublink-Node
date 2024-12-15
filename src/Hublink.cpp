@@ -171,8 +171,6 @@ void Hublink::startAdvertising()
 
     // Configure and start advertising
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    // pAdvertising->setMinInterval(0x20);
-    // pAdvertising->setMaxInterval(0x40);
     pAdvertising->start();
     delay(10); // let the BLE stack start
 }
@@ -441,35 +439,19 @@ void Hublink::sleep(uint64_t milliseconds)
 void Hublink::doBLE()
 {
     startAdvertising();
-
     unsigned long subLoopStartTime = millis();
     bool didConnect = false;
 
-    // Initial sleep while waiting for potential connection
-    uint64_t remainingTime = bleConnectFor * 1000;
-    // esp_sleep_enable_timer_wakeup(remainingTime * 1000); // Convert to microseconds
-    // esp_sleep_enable_bt_wakeup();
-    // delay(10); // BLE settle
-    // esp_light_sleep_start();
-    // delay(10); // Minimal wakeup delay
-
-    // // Disable Bluetooth wakeup after initial sleep
-    // esp_sleep_disable_bt_wakeup();
-
-    while ((millis() - subLoopStartTime < remainingTime && !didConnect) || deviceConnected)
+    // Remove the light sleep attempt since it's not helping
+    while ((millis() - subLoopStartTime < bleConnectFor * 1000 && !didConnect) || deviceConnected)
     {
         updateConnectionStatus();
-        didConnect |= deviceConnected; // set to true if deviceConnected is true
-        delay(100);                    // service delay
+        didConnect |= deviceConnected;
+        delay(100);
     }
 
     stopAdvertising();
     delay(10);
-    // Print heap stats after BLE cycle
-    Serial.printf("%lu ms - Free heap: %d bytes, Min free heap: %d bytes\n",
-                  millis(),
-                  ESP.getFreeHeap(),
-                  ESP.getMinFreeHeap());
 }
 
 void Hublink::sync()

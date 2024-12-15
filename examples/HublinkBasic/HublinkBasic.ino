@@ -15,7 +15,6 @@ void setup()
   SPI.begin(SCK, MISO, MOSI, cs);
   if (hublink.init())
   {
-    Serial.println("\n\n\n----------------------------------");
     Serial.println("✓ Hublink.");
   }
   else
@@ -25,13 +24,21 @@ void setup()
     {
     }
   }
-  // Serial.flush();
+
+  // Wait for serial input while flashing LED
+  Serial.println("Press any key to continue...");
+  while (!Serial.available())
+  {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); // Toggle LED
+    delay(200);
+  }
+  digitalWrite(LED_BUILTIN, LOW); // Turn LED off before continuing
 }
 
 void loop()
 {
   hublink.sync(); // only blocks when ready
   // Serial.flush(); // Add flush before sleep
-  // hublink.sleep(1000); // optional light sleep
-  delay(1000);
+  hublink.sleep(1000); // optional light sleep
+  // delay(1000);
 }

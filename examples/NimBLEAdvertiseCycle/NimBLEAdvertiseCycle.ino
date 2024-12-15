@@ -1,7 +1,6 @@
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <NimBLEDevice.h>
+#include <NimBLEServer.h>
+#include <NimBLEUtils.h>
 
 #define SERVICE_UUID "57617368-5501-0001-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID_FILENAME "57617368-5502-0001-8000-00805f9b34fb"
@@ -10,12 +9,12 @@
 #define CHARACTERISTIC_UUID_NODE "57617368-5505-0001-8000-00805f9b34fb"
 
 int lastMinFreeHeap = 0;
-BLEServer *pServer = nullptr;
-BLEService *pService = nullptr;
-BLECharacteristic *pFilenameCharacteristic;
-BLECharacteristic *pFileTransferCharacteristic;
-BLECharacteristic *pConfigCharacteristic;
-BLECharacteristic *pNodeCharacteristic;
+NimBLEServer *pServer = nullptr;
+NimBLEService *pService = nullptr;
+NimBLECharacteristic *pFilenameCharacteristic;
+NimBLECharacteristic *pFileTransferCharacteristic;
+NimBLECharacteristic *pConfigCharacteristic;
+NimBLECharacteristic *pNodeCharacteristic;
 
 void printMemoryStats(const char *label)
 {
@@ -33,39 +32,46 @@ void printMemoryStats(const char *label)
 
 void startBLE()
 {
-    BLEDevice::init("ESP32_TEST"); // no leaks
+    NimBLEDevice::init("ESP32_TEST");
 
     // Create server
-    pServer = BLEDevice::createServer(); // fixed leak! BLEDevice.cpp
+    pServer = NimBLEDevice::createServer();
 
     // Create service
-    pService = pServer->createService(BLEUUID(SERVICE_UUID)); // fixed leak! BLEServer.cpp
+    pService = pServer->createService(SERVICE_UUID);
 
-    // Create characteristic, no leaks
+    // Create characteristics
     pFilenameCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_FILENAME,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
-    pFilenameCharacteristic->addDescriptor(new BLE2902()); // !! fixed leak! BLE2902.cpp, BLECharacteristic.cpp
+        NIMBLE_PROPERTY::READ |
+            NIMBLE_PROPERTY::WRITE |
+            NIMBLE_PROPERTY::INDICATE);
 
     pFileTransferCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_FILETRANSFER,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_INDICATE);
-    pFileTransferCharacteristic->addDescriptor(new BLE2902());
+        NIMBLE_PROPERTY::READ |
+            NIMBLE_PROPERTY::INDICATE);
 
     pConfigCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_GATEWAY,
-        BLECharacteristic::PROPERTY_WRITE);
+        NIMBLE_PROPERTY::WRITE);
 
     pNodeCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_NODE,
-        BLECharacteristic::PROPERTY_READ);
+        NIMBLE_PROPERTY::READ);
 
     // Start service
-    pService->start(); // no leaks
+    pService->start();
 
     // Start advertising
-    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising(); // no leaks
-    pAdvertising->addServiceUUID(SERVICE_UUID);                 // fixed leak! BLEAdvertising.cpp
+    NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+
+    // Set up scan response data
+    NimBLEAdvertisementData scanResponse;
+    scanResponse.setName("ESP32_TEST");
+    pAdvertising->setScanResponseData(scanResponse);
+
     pAdvertising->start();
 }
 
@@ -73,11 +79,16 @@ void stopBLE()
 {
     if (pService != nullptr)
     {
-        pService->stop();
+        // NimBLE doesn't need explicit service stop
         pService = nullptr;
     }
+
+    // Stop advertising
+    NimBLEDevice::getAdvertising()->stop();
+
+    // NimBLE handles cleanup differently
+    NimBLEDevice::deinit(true);
     pServer = nullptr;
-    BLEDevice::deinit(false); // must be false!!
 }
 
 void setup()
@@ -85,7 +96,7 @@ void setup()
     Serial.begin(115200);
     pinMode(LED_BUILTIN, OUTPUT);
     delay(1000);
-    Serial.println("\n\n\n----------------------------- ADV CYCLE -----------------------------");
+    Serial.println("\n\n\n----------------------------- NIMBLE ADV CYCLE -----------------------------");
     Serial.println("Press Enter to continue...");
 
     // Flash LED while waiting for input
