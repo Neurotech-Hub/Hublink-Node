@@ -1,10 +1,9 @@
 #include <Hublink.h>
 
 const int cs = A0;
-Hublink hublink(cs); // Use default Hublink instance
+Hublink hublink(cs);  // Use default Hublink instance
 
-void setup()
-{
+void setup() {
   Serial.begin(9600);
   delay(1000);
 
@@ -13,32 +12,26 @@ void setup()
 
   // initialize SPI for SD card
   SPI.begin(SCK, MISO, MOSI, cs);
-  if (hublink.init())
-  {
+  if (hublink.init()) {
     Serial.println("✓ Hublink.");
-  }
-  else
-  {
+  } else {
     Serial.println("✗ Failed.");
-    while (1)
-    {
+    while (1) {
     }
   }
 
   // Wait for serial input while flashing LED
   Serial.println("Press any key to continue...");
-  while (!Serial.available())
-  {
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); // Toggle LED
+  while (!Serial.available()) {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));  // Toggle LED
     delay(200);
   }
-  digitalWrite(LED_BUILTIN, LOW); // Turn LED off before continuing
+  digitalWrite(LED_BUILTIN, LOW);  // Turn LED off before continuing
 }
 
-void loop()
-{
-  hublink.sync(); // only blocks when ready
+void loop() {
+  hublink.sync();  // only blocks when ready
   // Serial.flush(); // Add flush before sleep
-  hublink.sleep(1000); // optional light sleep
-  // delay(1000);
+  // hublink.sleep(1000); // optional light sleep
+  delay(1000);
 }

@@ -177,7 +177,7 @@ void Hublink::startAdvertising()
 
 void Hublink::stopAdvertising()
 {
-    BLEDevice::getAdvertising()->stop();
+    BLEDevice::stopAdvertising();
     delay(10);
     resetBLEState();
 
