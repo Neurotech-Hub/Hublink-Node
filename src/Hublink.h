@@ -12,6 +12,7 @@
 #include "esp_system.h"
 #include <vector>
 #include <string>
+#include <atomic>
 
 // BLE UUIDs
 #define SERVICE_UUID "57617368-5501-0001-8000-00805f9b34fb"
@@ -40,6 +41,7 @@ enum class CPUFrequency : uint32_t
 class HublinkServerCallbacks;
 class HublinkFilenameCallbacks;
 class HublinkGatewayCallbacks;
+class HublinkIndicationCallbacks;
 
 // Simple empty callbacks
 class EmptyServerCallbacks : public NimBLEServerCallbacks
@@ -67,7 +69,6 @@ public:
     bool initSD();
     void startAdvertising();
     void stopAdvertising();
-    void updateConnectionStatus();
     void updateMtuSize();
     String readMetaJson();
 
@@ -102,6 +103,7 @@ public:
     friend class HublinkServerCallbacks;
     friend class HublinkFilenameCallbacks;
     friend class HublinkGatewayCallbacks;
+    friend class HublinkIndicationCallbacks;
 
     // Public methods
     void setTimestampCallback(TimestampCallback callback);
@@ -118,6 +120,9 @@ protected:
     NimBLECharacteristic *pNodeCharacteristic;
     NimBLEServer *pServer;
     NimBLEService *pService;
+
+    // Helper function for reliable indications
+    bool sendIndication(NimBLECharacteristic *pChar, const uint8_t *data, size_t length);
 
     // State tracking
     String macAddress;

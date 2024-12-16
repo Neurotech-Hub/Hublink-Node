@@ -20,38 +20,38 @@ For a complete working example, refer to the `examples/` directory.
 The library accepts configuration via a file on the SD card in JSON format.
 ```json
 {
-    "hublink": {
-        "advertise": "CUSTOM_NAME",
-        "advertise_every": 300,
-        "advertise_for": 30,
-        "disable": false
-    },
-    "subject": {
-        "id": "mouse001",
-        "strain": "C57BL/6",
-        "strain_options": [
-            "C57BL/6",
-            "BALB/c",
-            "129S1/SvImJ",
-            "F344",
-            "Long Evans",
-            "Sprague Dawley"
-        ],
-        "sex": "male",
-        "sex_options": [
-            "male",
-            "female"
-        ]
-    },
-    "fed": {
-        "program": "Classic",
-        "program_options": [
-            "Classic",
-            "Intense",
-            "Minimal",
-            "Custom"
-        ]
-    }
+  "hublink": {
+      "advertise": "HUBLINK",
+      "advertise_every": 300,
+      "advertise_for": 30,
+      "disable": false
+  },
+  "subject": {
+      "id": "mouse001",
+      "strain": "C57BL/6",
+      "strain_options": [
+          "C57BL/6",
+          "BALB/c",
+          "129S1/SvImJ",
+          "F344",
+          "Long Evans",
+          "Sprague Dawley"
+      ],
+      "sex": "male",
+      "sex_options": [
+          "male",
+          "female"
+      ]
+  },
+  "fed": {
+      "program": "Classic",
+      "program_options": [
+          "Classic",
+          "Intense",
+          "Minimal",
+          "Custom"
+      ]
+  }
 }
 ```
 
