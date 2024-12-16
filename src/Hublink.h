@@ -1,21 +1,27 @@
 #ifndef Hublink_h
 #define Hublink_h
 
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <NimBLEDevice.h>
+#include <NimBLEServer.h>
+#include <NimBLEUtils.h>
+#include <NimBLECharacteristic.h>
 #include <SD.h>
 #include <SPI.h>
 #include <esp_sleep.h>
 #include <ArduinoJson.h>
 #include "esp_system.h"
+#include <vector>
+#include <string>
 
 // BLE UUIDs
 #define SERVICE_UUID "57617368-5501-0001-8000-00805f9b34fb"
+// READ/WRITE/INDICATE
 #define CHARACTERISTIC_UUID_FILENAME "57617368-5502-0001-8000-00805f9b34fb"
+// READ/INDICATE
 #define CHARACTERISTIC_UUID_FILETRANSFER "57617368-5503-0001-8000-00805f9b34fb"
+// WRITE
 #define CHARACTERISTIC_UUID_GATEWAY "57617368-5504-0001-8000-00805f9b34fb"
+// READ
 #define CHARACTERISTIC_UUID_NODE "57617368-5505-0001-8000-00805f9b34fb"
 
 // File paths
@@ -30,6 +36,26 @@ enum class CPUFrequency : uint32_t
     MHz_240 = 240  // Maximum frequency
 };
 
+// Forward declare callback classes
+class HublinkServerCallbacks;
+class HublinkFilenameCallbacks;
+class HublinkGatewayCallbacks;
+
+// Simple empty callbacks
+class EmptyServerCallbacks : public NimBLEServerCallbacks
+{
+    void onConnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo) override {}
+    void onDisconnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo, int reason) override {}
+};
+
+class EmptyCharCallbacks : public NimBLECharacteristicCallbacks
+{
+    void onWrite(NimBLECharacteristic *pCharacteristic, NimBLEConnInfo &connInfo) override {}
+};
+
+// Add near the top with other definitions
+typedef void (*TimestampCallback)(uint32_t timestamp);
+
 class Hublink
 {
 public:
@@ -43,10 +69,7 @@ public:
     void stopAdvertising();
     void updateConnectionStatus();
     void updateMtuSize();
-    bool setBLECallbacks(BLEServerCallbacks *serverCallbacks = nullptr,
-                         BLECharacteristicCallbacks *filenameCallbacks = nullptr,
-                         BLECharacteristicCallbacks *configCallbacks = nullptr);
-    String readMetaJson(); // Reads and parses meta.json file
+    String readMetaJson();
 
     // Connection events
     void onConnect();
@@ -56,105 +79,45 @@ public:
     void handleFileTransfer(String fileName);
     void sendAvailableFilenames();
     bool isValidFile(String fileName);
-    String parseGateway(BLECharacteristic *pCharacteristic, const String &key);
+    String parseGateway(NimBLECharacteristic *pCharacteristic, const String &key);
 
     // Public state variables
     String currentFileName;
     bool deviceConnected = false;
-    bool sendFilenames = false; // Set when config received via BLE
-    String validExtensions[4] = {".txt", ".csv", ".log", ".json"};
+    bool sendFilenames = false;
+    std::vector<String> validExtensions = {".txt", ".csv", ".log", ".json"};
 
     // BLE configuration
-    uint32_t bleConnectEvery = 300; // Seconds between advertising periods
-    uint32_t bleConnectFor = 30;    // Seconds of each advertising period
-    bool disable = false;           // BLE enable flag
+    uint32_t bleConnectEvery = 300;
+    uint32_t bleConnectFor = 30;
+    bool disable = false;
     String advName;
 
     void sleep(uint64_t milliseconds);
     void setCPUFrequency(CPUFrequency freq_mhz);
-
-    // Virtual methods for callbacks
     void doBLE();
+    void sync();
 
-    void sync(); // called from loop()
+    // Make callback classes friends
+    friend class HublinkServerCallbacks;
+    friend class HublinkFilenameCallbacks;
+    friend class HublinkGatewayCallbacks;
 
-    ~Hublink();
+    // Public methods
+    void setTimestampCallback(TimestampCallback callback);
+    void addValidExtension(const String &extension);
+    void clearValidExtensions();
+    void setValidExtensions(const std::vector<String> &extensions);
+    const std::vector<String> &getValidExtensions() const;
 
 protected:
-    // Default callback classes
-    class DefaultServerCallbacks : public BLEServerCallbacks
-    {
-        Hublink *hublink;
-
-    public:
-        DefaultServerCallbacks(Hublink *hl) : hublink(hl) {}
-        void onConnect(BLEServer *pServer) override { hublink->handleServerConnect(pServer); }
-        void onDisconnect(BLEServer *pServer) override { hublink->handleServerDisconnect(pServer); }
-    };
-
-    class DefaultFilenameCallback : public BLECharacteristicCallbacks
-    {
-        Hublink *hublink;
-
-    public:
-        DefaultFilenameCallback(Hublink *hl) : hublink(hl) {}
-        void onWrite(BLECharacteristic *pCharacteristic) override
-        {
-            hublink->handleFilenameWrite(pCharacteristic);
-        }
-    };
-
-    class DefaultGatewayCallback : public BLECharacteristicCallbacks
-    {
-        Hublink *hublink;
-
-    public:
-        DefaultGatewayCallback(Hublink *hl) : hublink(hl) {}
-        void onWrite(BLECharacteristic *pCharacteristic) override
-        {
-            hublink->handleGatewayWrite(pCharacteristic);
-        }
-    };
-
-    // Virtual methods that can be overridden
-    virtual void handleServerConnect(BLEServer *pServer)
-    {
-        Serial.println("Device connected!");
-        onConnect();
-    }
-
-    virtual void handleServerDisconnect(BLEServer *pServer)
-    {
-        Serial.println("Device disconnected!");
-        onDisconnect();
-    }
-
-    virtual void handleFilenameWrite(BLECharacteristic *pCharacteristic)
-    {
-        String filename = String(pCharacteristic->getValue().c_str());
-        Serial.println("Filename requested: " + filename);
-        currentFileName = filename;
-    }
-
-    virtual void handleGatewayWrite(BLECharacteristic *pCharacteristic)
-    {
-        String rtc = parseGateway(pCharacteristic, "rtc");
-        if (rtc.length() > 0)
-        {
-            Serial.println("Gateway settings received:");
-            Serial.println("rtc: " + rtc);
-        }
-        sendFilenames = true;
-    }
-
-private:
     // BLE characteristics
-    BLECharacteristic *pFilenameCharacteristic;
-    BLECharacteristic *pFileTransferCharacteristic;
-    BLECharacteristic *pConfigCharacteristic;
-    BLECharacteristic *pNodeCharacteristic;
-    BLEServer *pServer;
-    BLEService *pService;
+    NimBLECharacteristic *pFilenameCharacteristic;
+    NimBLECharacteristic *pFileTransferCharacteristic;
+    NimBLECharacteristic *pConfigCharacteristic;
+    NimBLECharacteristic *pNodeCharacteristic;
+    NimBLEServer *pServer;
+    NimBLEService *pService;
 
     // State tracking
     String macAddress;
@@ -181,11 +144,74 @@ private:
 
     unsigned long lastHublinkMillis;
 
-    // Default callback instances
-    DefaultServerCallbacks *defaultServerCallbacks;
-    DefaultFilenameCallback *defaultFilenameCallbacks;
-    DefaultGatewayCallback *defaultGatewayCallbacks;
-    void createCallbacks();
+    void printMemStats(const char *prefix);
+
+    // Static callback instances - these must exist for the lifetime of the BLE connection
+    static HublinkServerCallbacks serverCallbacks;
+    static HublinkFilenameCallbacks filenameCallbacks;
+    static HublinkGatewayCallbacks gatewayCallbacks;
+
+    // Add to protected members
+    TimestampCallback _timestampCallback = nullptr;
+    void handleTimestamp(const String &timestamp);
+
+private:
+    // Critical: Must be called before NimBLE deinit to prevent crashes
+    // Removes all callbacks to prevent dangling references during deinit
+    void cleanupCallbacks();
+};
+
+// Global pointer declaration
+extern Hublink *g_hublink;
+
+// Now define the callback classes
+class HublinkServerCallbacks : public NimBLEServerCallbacks
+{
+public:
+    void onConnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo) override
+    {
+        if (g_hublink && pServer != nullptr)
+        {
+            g_hublink->onConnect();
+        }
+    }
+
+    void onDisconnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo, int reason) override
+    {
+        if (g_hublink && pServer != nullptr)
+        {
+            g_hublink->onDisconnect();
+        }
+    }
+};
+
+class HublinkFilenameCallbacks : public NimBLECharacteristicCallbacks
+{
+public:
+    void onWrite(NimBLECharacteristic *pCharacteristic, NimBLEConnInfo &connInfo) override
+    {
+        if (g_hublink && pCharacteristic)
+        {
+            g_hublink->currentFileName = String(pCharacteristic->getValue().c_str());
+        }
+    }
+};
+
+class HublinkGatewayCallbacks : public NimBLECharacteristicCallbacks
+{
+public:
+    void onWrite(NimBLECharacteristic *pCharacteristic, NimBLEConnInfo &connInfo) override
+    {
+        if (g_hublink && pCharacteristic)
+        {
+            String timestamp = g_hublink->parseGateway(pCharacteristic, "timestamp");
+            if (timestamp.length() > 0)
+            {
+                g_hublink->handleTimestamp(timestamp);
+            }
+            g_hublink->sendFilenames = true;
+        }
+    }
 };
 
 #endif
