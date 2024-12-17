@@ -43,18 +43,6 @@ class HublinkFilenameCallbacks;
 class HublinkGatewayCallbacks;
 class HublinkIndicationCallbacks;
 
-// Simple empty callbacks
-class EmptyServerCallbacks : public NimBLEServerCallbacks
-{
-    void onConnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo) override {}
-    void onDisconnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo, int reason) override {}
-};
-
-class EmptyCharCallbacks : public NimBLECharacteristicCallbacks
-{
-    void onWrite(NimBLECharacteristic *pCharacteristic, NimBLEConnInfo &connInfo) override {}
-};
-
 // Add near the top with other definitions
 typedef void (*TimestampCallback)(uint32_t timestamp);
 
@@ -214,7 +202,9 @@ public:
             {
                 g_hublink->handleTimestamp(timestamp);
             }
-            g_hublink->sendFilenames = true;
+            // Parse sendFilenames flag
+            String sendFilenames = g_hublink->parseGateway(pCharacteristic, "sendFilenames");
+            g_hublink->sendFilenames = (sendFilenames == "true");
         }
     }
 };

@@ -282,7 +282,6 @@ void Hublink::handleFileTransfer(String fileName)
     {
         watchdogTimer = millis();
         int bytesRead = file.read(buffer, mtuSize);
-        Serial.printf("Read %d bytes from file\n", bytesRead);
 
         if (bytesRead > 0)
         {
@@ -291,7 +290,6 @@ void Hublink::handleFileTransfer(String fileName)
                 Serial.println("Failed to send file chunk indication");
                 break;
             }
-            Serial.println("Successfully sent chunk");
         }
         else
         {
@@ -384,6 +382,12 @@ String Hublink::parseGateway(NimBLECharacteristic *pCharacteristic, const String
     if (!doc.containsKey(key))
     {
         return "";
+    }
+
+    // Handle boolean values specifically
+    if (doc[key].is<bool>())
+    {
+        return doc[key].as<bool>() ? "true" : "false";
     }
 
     return doc[key].as<String>();
