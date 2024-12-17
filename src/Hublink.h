@@ -122,7 +122,7 @@ protected:
     uint16_t mtuSize = 20;
     const uint16_t NEGOTIATE_MTU_SIZE = 515; // 512 + MTU_HEADER_SIZE
     const uint16_t MTU_HEADER_SIZE = 3;
-    const uint16_t WATCHDOG_TIMEOUT_MS = 10000; // gateway could be pinging server
+    uint32_t watchdogTimeoutMs = 10000; // Default 10 seconds
 
     // SD card configuration
     uint8_t cs;
@@ -205,6 +205,13 @@ public:
             // Parse sendFilenames flag
             String sendFilenames = g_hublink->parseGateway(pCharacteristic, "sendFilenames");
             g_hublink->sendFilenames = (sendFilenames == "true");
+
+            // Parse watchdogTimeoutMs
+            String watchdogTimeout = g_hublink->parseGateway(pCharacteristic, "watchdogTimeoutMs");
+            if (watchdogTimeout.length() > 0)
+            {
+                g_hublink->watchdogTimeoutMs = watchdogTimeout.toInt();
+            }
         }
     }
 };

@@ -333,6 +333,7 @@ void Hublink::onConnect()
     Serial.println("Hublink node connected.");
     deviceConnected = true;
     watchdogTimer = millis();
+    watchdogTimeoutMs = 10000; // Reset to default on each new connection
     NimBLEDevice::setMTU(NEGOTIATE_MTU_SIZE);
 }
 
@@ -412,7 +413,7 @@ void Hublink::doBLE()
     while ((millis() - subLoopStartTime < bleConnectFor * 1000 && !didConnect) || deviceConnected)
     {
         // Watchdog timer
-        if (deviceConnected && (millis() - watchdogTimer > WATCHDOG_TIMEOUT_MS))
+        if (deviceConnected && (millis() - watchdogTimer > watchdogTimeoutMs))
         {
             Serial.println("Hublink node timeout detected, disconnecting...");
             // Disconnect using the connection handle
