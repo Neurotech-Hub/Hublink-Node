@@ -100,6 +100,9 @@ public:
     void setValidExtensions(const std::vector<String> &extensions);
     const std::vector<String> &getValidExtensions() const;
 
+    // Add new public methods
+    void handleMetaJsonChunk(uint32_t id, const String &data);
+
 protected:
     // BLE characteristics
     NimBLECharacteristic *pFilenameCharacteristic;
@@ -147,6 +150,23 @@ protected:
     // Add to protected members
     TimestampCallback _timestampCallback = nullptr;
     void handleTimestamp(const String &timestamp);
+
+    // Meta.json transfer state
+    bool metaJsonTransferInProgress = false;
+    uint32_t lastMetaJsonId = 0;
+    String tempMetaJsonPath = "/meta.json.tmp";
+    File tempMetaJsonFile;
+    unsigned long metaJsonLastChunkTime = 0;
+    const unsigned long META_JSON_TIMEOUT_MS = 5000; // 5 second timeout
+    const uint8_t MAX_META_JSON_RETRIES = 3;
+    uint8_t metaJsonRetryCount = 0;
+
+    // Meta.json handling methods
+    bool beginMetaJsonTransfer();
+    bool processMetaJsonChunk(const String &data);
+    bool finalizeMetaJsonTransfer();
+    void cleanupMetaJsonTransfer();
+    bool validateJsonStructure(const String &jsonStr);
 
 private:
     // Critical: Must be called before NimBLE deinit to prevent crashes
@@ -197,20 +217,35 @@ public:
     {
         if (g_hublink && pCharacteristic)
         {
+            // Handle timestamp
             String timestamp = g_hublink->parseGateway(pCharacteristic, "timestamp");
             if (timestamp.length() > 0)
             {
                 g_hublink->handleTimestamp(timestamp);
             }
-            // Parse sendFilenames flag
+
+            // Handle sendFilenames flag
             String sendFilenames = g_hublink->parseGateway(pCharacteristic, "sendFilenames");
             g_hublink->sendFilenames = (sendFilenames == "true");
 
-            // Parse watchdogTimeoutMs
+            // Handle watchdogTimeoutMs
             String watchdogTimeout = g_hublink->parseGateway(pCharacteristic, "watchdogTimeoutMs");
             if (watchdogTimeout.length() > 0)
             {
                 g_hublink->watchdogTimeoutMs = watchdogTimeout.toInt();
+            }
+
+            // Handle meta.json transfer
+            String metaJsonId = g_hublink->parseGateway(pCharacteristic, "metaJsonId");
+            String metaJsonData = g_hublink->parseGateway(pCharacteristic, "metaJsonData");
+
+            if (metaJsonId.length() > 0 && metaJsonData.length() > 0)
+            {
+                // Block other operations during meta.json transfer
+                g_hublink->sendFilenames = false;
+                g_hublink->currentFileName = "";
+
+                g_hublink->handleMetaJsonChunk(metaJsonId.toInt(), metaJsonData);
             }
         }
     }

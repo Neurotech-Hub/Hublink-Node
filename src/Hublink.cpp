@@ -341,6 +341,11 @@ void Hublink::onDisconnect()
 {
     Serial.println("Hublink node disconnected.");
     deviceConnected = false;
+    metaJson = readMetaJson();
+    if (metaJson.length() > 0)
+    {
+        pNodeCharacteristic->setValue(metaJson.c_str());
+    }
 }
 
 void Hublink::resetBLEState()
@@ -351,11 +356,18 @@ void Hublink::resetBLEState()
     allFilesSent = false;
     sendFilenames = false;
     watchdogTimer = 0;
+
+    // Add meta.json cleanup
+    if (metaJsonTransferInProgress)
+    {
+        cleanupMetaJsonTransfer();
+    }
 }
 
 void Hublink::updateMtuSize()
 {
     mtuSize = NimBLEDevice::getMTU() - MTU_HEADER_SIZE;
+    Serial.printf("Updated MTU size: %d\n", mtuSize);
 }
 
 String Hublink::parseGateway(NimBLECharacteristic *pCharacteristic, const String &key)
@@ -368,8 +380,6 @@ String Hublink::parseGateway(NimBLECharacteristic *pCharacteristic, const String
     }
 
     String configStr = String(value.c_str());
-    Serial.println("Config: Parsing JSON: " + configStr);
-
     StaticJsonDocument<512> doc;
     DeserializationError error = deserializeJson(doc, configStr);
 
@@ -384,6 +394,9 @@ String Hublink::parseGateway(NimBLECharacteristic *pCharacteristic, const String
     {
         return "";
     }
+
+    // Only print the config if the key was found
+    Serial.println("Config: Parsing JSON: " + configStr);
 
     // Handle boolean values specifically
     if (doc[key].is<bool>())
@@ -416,13 +429,20 @@ void Hublink::doBLE()
         if (deviceConnected && (millis() - watchdogTimer > watchdogTimeoutMs))
         {
             Serial.println("Hublink node timeout detected, disconnecting...");
+
+            // Cleanup any in-progress transfers
+            if (metaJsonTransferInProgress)
+            {
+                cleanupMetaJsonTransfer();
+            }
+
             // Disconnect using the connection handle
             if (pServer->getConnectedCount() > 0)
             {
-                NimBLEConnInfo connInfo = pServer->getPeerInfo(0); // Get first connected peer
+                NimBLEConnInfo connInfo = pServer->getPeerInfo(0);
                 pServer->disconnect(connInfo.getConnHandle());
             }
-            delay(10); // Give BLE stack time to clean up
+            delay(10);
         }
 
         // Handle file transfers when connected
@@ -550,7 +570,22 @@ public:
     void onStatus(NimBLECharacteristic *pCharacteristic, int code) override
     {
         indicationComplete = true;
-        indicationSuccess = (code == BLE_HS_EDONE);
+        indicationSuccess = false; // Default to failure
+
+        switch (code)
+        {
+        case BLE_HS_EDONE:
+            indicationSuccess = true;
+            break;
+        case BLE_HS_ETIMEOUT:
+            Serial.printf("Indication status: TIMEOUT (code: %d) on characteristic: %s\n",
+                          code, pCharacteristic->getUUID().toString().c_str());
+            break;
+        default:
+            Serial.printf("Indication status: UNKNOWN (code: %d) on characteristic: %s\n",
+                          code, pCharacteristic->getUUID().toString().c_str());
+            break;
+        }
     }
 
     void reset()
@@ -566,14 +601,16 @@ public:
         {
             delay(10);
         }
-        return indicationSuccess;
+        return indicationComplete; // Return true if we got any response
     }
 };
 
 bool Hublink::sendIndication(NimBLECharacteristic *pChar, const uint8_t *data, size_t length)
 {
     if (!deviceConnected)
+    {
         return false;
+    }
 
     static HublinkIndicationCallbacks indicationCallbacks;
     NimBLECharacteristicCallbacks *originalCallbacks = pChar->getCallbacks();
@@ -582,16 +619,15 @@ bool Hublink::sendIndication(NimBLECharacteristic *pChar, const uint8_t *data, s
     pChar->setValue(data, length);
 
     const int maxRetries = 3;
-    const unsigned long timeout = 1000; // 1 second timeout
+    const unsigned long timeout = 1000;
     bool success = false;
 
-    for (int i = 0; i < maxRetries && !success; i++)
+    for (int i = 0; i < maxRetries && !success && deviceConnected; i++)
     {
         indicationCallbacks.reset();
 
         if (!pChar->indicate())
         {
-            Serial.printf("Indication attempt %d failed to start\n", i + 1);
             delay(100);
             continue;
         }
@@ -599,12 +635,241 @@ bool Hublink::sendIndication(NimBLECharacteristic *pChar, const uint8_t *data, s
         success = indicationCallbacks.waitForComplete(timeout);
         if (!success)
         {
-            Serial.printf("Indication attempt %d failed or timed out\n", i + 1);
             delay(100);
         }
     }
 
-    // Restore original callbacks
     pChar->setCallbacks(originalCallbacks);
     return success;
+}
+
+bool Hublink::beginMetaJsonTransfer()
+{
+    if (!initSD())
+    {
+        Serial.println("Failed to initialize SD for meta.json transfer");
+        return false;
+    }
+
+    // Remove any existing temporary file
+    if (SD.exists(tempMetaJsonPath))
+    {
+        SD.remove(tempMetaJsonPath);
+    }
+
+    tempMetaJsonFile = SD.open(tempMetaJsonPath, FILE_WRITE);
+    if (!tempMetaJsonFile)
+    {
+        Serial.println("Failed to create temporary meta.json file");
+        return false;
+    }
+
+    metaJsonTransferInProgress = true;
+    lastMetaJsonId = 0;
+    metaJsonLastChunkTime = millis();
+    metaJsonRetryCount = 0;
+
+    Serial.println("Meta.json transfer started");
+    return true;
+}
+
+bool Hublink::validateJsonStructure(const String &jsonStr)
+{
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, jsonStr);
+
+    if (error)
+    {
+        Serial.print("JSON validation failed: ");
+        Serial.println(error.c_str());
+        return false;
+    }
+
+    // Verify required structure
+    if (!doc.containsKey("hublink"))
+    {
+        Serial.println("Missing required 'hublink' key");
+        return false;
+    }
+
+    return true;
+}
+
+bool Hublink::processMetaJsonChunk(const String &data)
+{
+    if (!metaJsonTransferInProgress || !tempMetaJsonFile)
+    {
+        Serial.println("No active meta.json transfer");
+        return false;
+    }
+
+    size_t bytesWritten = tempMetaJsonFile.print(data);
+    if (bytesWritten != data.length())
+    {
+        Serial.println("Failed to write chunk to temporary file");
+        cleanupMetaJsonTransfer();
+        return false;
+    }
+
+    metaJsonLastChunkTime = millis();
+    return true;
+}
+
+bool Hublink::finalizeMetaJsonTransfer()
+{
+    if (!metaJsonTransferInProgress || !tempMetaJsonFile)
+    {
+        return false;
+    }
+
+    tempMetaJsonFile.close();
+
+    // Validate the complete JSON file
+    File validateFile = SD.open(tempMetaJsonPath);
+    if (!validateFile)
+    {
+        Serial.println("Failed to open temp file for validation");
+        cleanupMetaJsonTransfer();
+        return false;
+    }
+
+    String jsonContent = validateFile.readString();
+    validateFile.close();
+
+    if (!validateJsonStructure(jsonContent))
+    {
+        Serial.println("Invalid JSON structure in transferred file");
+        cleanupMetaJsonTransfer();
+        return false;
+    }
+
+    String backupPath = String(META_JSON_PATH) + ".bak";
+
+    // Backup existing meta.json if it exists
+    if (SD.exists(META_JSON_PATH))
+    {
+        if (SD.exists(backupPath))
+        {
+            SD.remove(backupPath);
+        }
+        SD.rename(META_JSON_PATH, backupPath);
+    }
+
+    // Replace meta.json with new file
+    if (!SD.rename(tempMetaJsonPath, META_JSON_PATH))
+    {
+        Serial.println("Failed to rename temporary file to meta.json");
+        cleanupMetaJsonTransfer();
+        return false;
+    }
+
+    // Remove backup file after successful transfer
+    if (SD.exists(backupPath))
+    {
+        SD.remove(backupPath);
+        Serial.println("Removed backup meta.json file");
+    }
+
+    metaJsonTransferInProgress = false;
+
+    Serial.println("Meta.json transfer completed successfully");
+    return true;
+}
+
+void Hublink::cleanupMetaJsonTransfer()
+{
+    if (tempMetaJsonFile)
+    {
+        tempMetaJsonFile.close();
+    }
+
+    if (SD.exists(tempMetaJsonPath))
+    {
+        SD.remove(tempMetaJsonPath);
+    }
+
+    metaJsonTransferInProgress = false;
+    lastMetaJsonId = 0;
+}
+
+void Hublink::handleMetaJsonChunk(uint32_t id, const String &data)
+{
+    Serial.printf("Meta.json chunk received - ID: %d, Transfer in progress: %s, Last ID: %d\n",
+                  id, metaJsonTransferInProgress ? "yes" : "no", lastMetaJsonId);
+
+    // Check for timeout
+    if (metaJsonTransferInProgress &&
+        (millis() - metaJsonLastChunkTime > META_JSON_TIMEOUT_MS))
+    {
+        Serial.printf("Meta.json transfer timed out (Last successful ID: %d)\n", lastMetaJsonId);
+        cleanupMetaJsonTransfer();
+        return;
+    }
+
+    // Handle EOF
+    if (id == 0 && data == "EOF")
+    {
+        if (!metaJsonTransferInProgress)
+        {
+            Serial.println("Ignoring EOF - no active transfer");
+            return;
+        }
+
+        if (lastMetaJsonId == 0)
+        {
+            Serial.println("Ignoring EOF - no chunks processed");
+            cleanupMetaJsonTransfer();
+            return;
+        }
+
+        if (finalizeMetaJsonTransfer())
+        {
+            Serial.println("Meta.json transfer completed successfully");
+        }
+        else
+        {
+            Serial.println("Failed to finalize meta.json transfer");
+            cleanupMetaJsonTransfer();
+        }
+        return;
+    }
+
+    // Handle regular chunks
+    if (!metaJsonTransferInProgress)
+    {
+        if (id == 1)
+        {
+            Serial.println("Starting new meta.json transfer");
+            if (!beginMetaJsonTransfer())
+            {
+                Serial.println("Failed to begin meta.json transfer");
+                return;
+            }
+        }
+        else
+        {
+            Serial.printf("Unexpected chunk ID %d when no transfer in progress\n", id);
+            return;
+        }
+    }
+
+    // Verify sequence
+    if (id != lastMetaJsonId + 1)
+    {
+        Serial.printf("Invalid sequence: expected %d, got %d\n", lastMetaJsonId + 1, id);
+        cleanupMetaJsonTransfer();
+        return;
+    }
+
+    // Process chunk
+    if (processMetaJsonChunk(data))
+    {
+        lastMetaJsonId = id;
+        Serial.printf("Successfully processed chunk %d\n", id);
+    }
+    else
+    {
+        Serial.println("Failed to process chunk");
+        cleanupMetaJsonTransfer();
+    }
 }
