@@ -85,7 +85,7 @@ public:
     void sleep(uint64_t milliseconds);
     void setCPUFrequency(CPUFrequency freq_mhz);
     void doBLE();
-    void sync();
+    void sync(uint32_t temporaryConnectFor = 0);
 
     // Make callback classes friends
     friend class HublinkServerCallbacks;

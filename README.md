@@ -18,6 +18,7 @@ For a complete working example, refer to the `examples/` directory.
 
 ### Meta Data File (meta.json)
 The library accepts configuration via a file on the SD card in JSON format.
+
 ```json
 {
   "hublink": {
@@ -55,32 +56,37 @@ The library accepts configuration via a file on the SD card in JSON format.
 }
 ```
 
-Where in the `hublink` configuration:
+Where,
 - `advertise`: Sets custom BLE advertising name
 - `interval_every`: Seconds between advertising periods
 - `interval_for`: Duration of each advertising period in seconds
 - `disable`: Enables/disables BLE functionality
 
-Hublink uses [bblanchon/ArduinoJson](https://github.com/bblanchon/ArduinoJson) to parse the JSON file. For example, to access the advertise name using ArduinoJson:
-```cpp
-JsonObject hublink = doc["hublink"];
-const char* advertiseName = hublink["advertise"];
-int intervalEvery = hublink["interval_every"];
-int intervalFor = hublink["interval_for"];
-```
+Hublink uses [bblanchon/ArduinoJson](https://github.com/bblanchon/ArduinoJson) to parse the JSON file. There are a number of free JSON editors/visualizers (e.g., [JSON to Graph Converter](https://jsonviewer.tools/editor)).
 
-There are a number of free JSON editors/visualizers (e.g., [JSON to Graph Converter](https://jsonviewer.tools/editor)).
+#### Meta.json Transfer Workflow
+The library supports secure transfer of meta.json configuration between client (mobile app) and ESP32:
 
-### BLE Configuration
-The library also accepts configuration via BLE in the following format:
-```
-key1=value1;key2=value2;key3=value3
-```
+**Reading meta.json (ESP32 → Client)**
+1. Client requests meta.json content
+2. ESP32 serves current configuration via NODE characteristic
+3. Client receives complete JSON in single read
 
-Example configuration string:
-```
-rtc=2024-03-21 14:30:00
-```
+**Writing meta.json (Client → ESP32)**
+1. Client divides meta.json into chunks and sends sequentially
+2. ESP32 validates chunk sequence and writes to temporary file
+3. On completion, ESP32:
+   - Validates JSON structure
+   - Backs up existing meta.json
+   - Replaces with new content
+   - Updates BLE configuration
+
+The transfer protocol includes error handling for:
+- Sequence validation
+- Timeout detection
+- Connection loss
+- JSON structure validation
+- Incomplete transfers
 
 ## License
 This library is open-source and available under the MIT license.

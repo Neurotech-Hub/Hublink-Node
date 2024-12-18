@@ -473,13 +473,27 @@ void Hublink::doBLE()
     printMemStats("BLE End");
 }
 
-void Hublink::sync()
+void Hublink::sync(uint32_t temporaryConnectFor)
 {
     unsigned long currentTime = millis();
-    if (!disable && currentTime - lastHublinkMillis >= bleConnectEvery * 1000)
+    if (!disable && (temporaryConnectFor > 0 || currentTime - lastHublinkMillis >= bleConnectEvery * 1000))
     {
         Serial.println("Hublink started advertising... ");
+
+        // Store original value
+        uint32_t originalConnectFor = bleConnectFor;
+
+        // Temporarily override if specified
+        if (temporaryConnectFor > 0)
+        {
+            bleConnectFor = temporaryConnectFor;
+        }
+
         doBLE();
+
+        // Restore original value
+        bleConnectFor = originalConnectFor;
+
         Serial.println("Done advertising.");
         lastHublinkMillis = millis();
     }

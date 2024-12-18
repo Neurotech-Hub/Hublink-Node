@@ -11,7 +11,7 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
 
   // initialize SPI for SD card
-  SPI.begin(SCK, MISO, MOSI, cs);
+  // SPI.begin(SCK, MISO, MOSI, cs); // if not using default SCK, MISO, MOSI
   if (hublink.init()) {
     Serial.println("✓ Hublink.");
   } else {
@@ -27,11 +27,13 @@ void setup() {
     delay(200);
   }
   digitalWrite(LED_BUILTIN, LOW);  // Turn LED off before continuing
+
+  hublink.sync(10000); // force sync to modify meta.json
 }
 
 void loop() {
   hublink.sync();  // only blocks when ready
   // Serial.flush(); // Add flush before sleep
-  // hublink.sleep(1000); // optional light sleep
-  delay(1000);
+  hublink.sleep(1000); // optional light sleep
+  // delay(1000);
 }
