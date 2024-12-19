@@ -21,7 +21,7 @@ Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency)
     g_hublink = this; // Set the global pointer
 }
 
-bool Hublink::init(String defaultAdvName, bool allowOverride)
+bool Hublink::begin(String defaultAdvName, bool allowOverride)
 {
     // Set CPU frequency to minimum required for radio operation
     setCPUFrequency(CPUFrequency::MHz_80);
@@ -496,11 +496,6 @@ void Hublink::sync(uint32_t temporaryConnectFor)
 
         Serial.println("Done advertising.");
         lastHublinkMillis = millis();
-    }
-    else if (!disable)
-    {
-        unsigned long remainingTime = (bleConnectEvery * 1000 - (currentTime - lastHublinkMillis)) / 1000;
-        Serial.printf("Time until next BLE cycle: %lu seconds\n", remainingTime);
     }
 }
 

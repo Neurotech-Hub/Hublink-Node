@@ -53,7 +53,7 @@ public:
     Hublink(uint8_t chipSelect = SS, uint32_t clockFrequency = 1000000);
 
     // BLE control
-    bool init(String defaultAdvName = "HUBLINK", bool allowOverride = true);
+    bool begin(String defaultAdvName = "HUBLINK", bool allowOverride = true);
     bool initSD();
     void startAdvertising();
     void stopAdvertising();
