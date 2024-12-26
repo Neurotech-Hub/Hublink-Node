@@ -14,7 +14,7 @@ Learn more at [https://hublink.cloud](https://hublink.cloud).
 - An ESP32-S3 board with an SD card module ([View Pricing](https://hublink.cloud/pricing))
 
 ## Usage
-For a complete working example, refer to the `examples/` directory.
+For a complete working example, refer to the `examples/` directory. Files on the SD card are treated as accumulators and Hublink uses file size as a "diff" proxy (i.e., if the number of bytes in a file changes _at all_, Hublink will attempt to transfer the file).
 
 ### Meta Data File (meta.json)
 The library accepts configuration via a file on the SD card in JSON format.
