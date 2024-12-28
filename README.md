@@ -25,6 +25,9 @@ The library accepts configuration via a file on the SD card in JSON format.
       "advertise": "HUBLINK",
       "advertise_every": 300,
       "advertise_for": 30,
+      "try_reconnect": true,
+      "reconnect_attempts": 3,
+      "reconnect_every": 30000,
       "disable": false
   },
   "subject": {
@@ -60,6 +63,9 @@ Where,
 - `advertise`: Sets custom BLE advertising name
 - `interval_every`: Seconds between advertising periods
 - `interval_for`: Duration of each advertising period in seconds
+- `try_reconnect`: Enables/disables automatic reconnection attempts (default: true)
+- `reconnect_attempts`: Number of reconnection attempts if initial connection fails (default: 3)
+- `reconnect_every`: Milliseconds between reconnection attempts (default: 30000)
 - `disable`: Enables/disables BLE functionality
 
 Hublink uses [bblanchon/ArduinoJson](https://github.com/bblanchon/ArduinoJson) to parse the JSON file. There are a number of free JSON editors/visualizers (e.g., [JSON to Graph Converter](https://jsonviewer.tools/editor)).

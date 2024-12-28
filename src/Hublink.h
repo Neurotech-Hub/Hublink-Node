@@ -85,7 +85,7 @@ public:
     void sleep(uint64_t milliseconds);
     void setCPUFrequency(CPUFrequency freq_mhz);
     void doBLE();
-    void sync(uint32_t temporaryConnectFor = 0);
+    bool sync(uint32_t temporaryConnectFor = 0);
 
     // Make callback classes friends
     friend class HublinkServerCallbacks;
@@ -102,6 +102,11 @@ public:
 
     // Add new public methods
     void handleMetaJsonChunk(uint32_t id, const String &data);
+
+    // Connection retry configuration
+    bool tryReconnect = true;        // Enable/disable reconnection attempts
+    uint8_t reconnectAttempts = 3;   // Number of reconnection attempts
+    uint32_t reconnectEvery = 30000; // Time between reconnection attempts (ms)
 
 protected:
     // BLE characteristics
@@ -167,6 +172,11 @@ protected:
     bool finalizeMetaJsonTransfer();
     void cleanupMetaJsonTransfer();
     bool validateJsonStructure(const String &jsonStr);
+
+    // Add retry tracking
+    uint8_t currentRetryAttempt = 0;
+    unsigned long lastRetryMillis = 0;
+    bool connectionAttempted = false;
 
 private:
     // Critical: Must be called before NimBLE deinit to prevent crashes

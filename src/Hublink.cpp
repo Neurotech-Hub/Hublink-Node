@@ -97,6 +97,33 @@ String Hublink::readMetaJson()
         }
     }
 
+    // Add new retry configuration parsing
+    if (hublink.containsKey("try_reconnect"))
+    {
+        tryReconnect = hublink["try_reconnect"].as<bool>();
+        Serial.printf("Retry enabled: %s\n", tryReconnect ? "true" : "false");
+    }
+
+    if (hublink.containsKey("reconnect_attempts"))
+    {
+        uint8_t attempts = hublink["reconnect_attempts"].as<uint8_t>();
+        if (attempts > 0)
+        {
+            reconnectAttempts = attempts;
+            Serial.printf("Retry attempts set to: %d\n", reconnectAttempts);
+        }
+    }
+
+    if (hublink.containsKey("reconnect_every"))
+    {
+        uint32_t every = hublink["reconnect_every"].as<uint32_t>();
+        if (every > 0)
+        {
+            reconnectEvery = every;
+            Serial.printf("Retry interval set to: %d ms\n", reconnectEvery);
+        }
+    }
+
     if (hublink.containsKey("disable"))
     {
         disable = hublink["disable"].as<bool>();
@@ -473,30 +500,68 @@ void Hublink::doBLE()
     printMemStats("BLE End");
 }
 
-void Hublink::sync(uint32_t temporaryConnectFor)
+// temporaryConnectFor is used to force syncing for some period other than
+// specified in meta.json/during normal runtime. The primary use case is
+// to place it in setup() to attempt to connect and modify meta.json
+bool Hublink::sync(uint32_t temporaryConnectFor)
 {
     unsigned long currentTime = millis();
+    bool connectionSuccess = false;
+
     if (!disable && (temporaryConnectFor > 0 || currentTime - lastHublinkMillis >= bleConnectEvery * 1000))
     {
-        Serial.println("Hublink started advertising... ");
-
-        // Store original value
-        uint32_t originalConnectFor = bleConnectFor;
-
-        // Temporarily override if specified
-        if (temporaryConnectFor > 0)
+        // If this is our first attempt or we're past the retry interval
+        if (!connectionAttempted ||
+            (currentRetryAttempt < reconnectAttempts &&
+             currentTime - lastRetryMillis >= reconnectEvery))
         {
-            bleConnectFor = temporaryConnectFor;
+            Serial.println("Hublink started advertising... ");
+
+            // Store original value
+            uint32_t originalConnectFor = bleConnectFor;
+
+            // Temporarily override if specified
+            if (temporaryConnectFor > 0)
+            {
+                bleConnectFor = temporaryConnectFor;
+            }
+
+            doBLE();
+
+            // Track connection status
+            connectionSuccess = deviceConnected;
+
+            // Update retry state
+            if (!connectionSuccess && tryReconnect)
+            {
+                if (!connectionAttempted)
+                {
+                    connectionAttempted = true;
+                    currentRetryAttempt = 0;
+                }
+                else
+                {
+                    currentRetryAttempt++;
+                }
+                lastRetryMillis = currentTime;
+            }
+            else
+            {
+                // Reset retry state on success or if retries disabled
+                connectionAttempted = false;
+                currentRetryAttempt = 0;
+            }
+
+            // Restore original value
+            bleConnectFor = originalConnectFor;
+
+            Serial.printf("Done advertising. Connection %s.\n",
+                          connectionSuccess ? "successful" : "failed");
+            lastHublinkMillis = millis();
         }
-
-        doBLE();
-
-        // Restore original value
-        bleConnectFor = originalConnectFor;
-
-        Serial.println("Done advertising.");
-        lastHublinkMillis = millis();
     }
+
+    return connectionSuccess;
 }
 
 void Hublink::printMemStats(const char *prefix)
