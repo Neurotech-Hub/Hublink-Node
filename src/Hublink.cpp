@@ -34,8 +34,8 @@ bool Hublink::begin(String defaultAdvName, bool allowOverride)
     }
     Serial.println("✓ SD Card.");
 
-    // 3. Read meta.json and set advertising name
-    metaJson = readMetaJson();
+    // 3. Read meta.json: set advertising name, subject id
+    readMetaJson();
     if (allowOverride && configuredAdvName.length() > 0)
     {
         advName = configuredAdvName;
@@ -132,6 +132,21 @@ String Hublink::readMetaJson()
 
     // Convert the hublink object to a string for BLE characteristic
     serializeJson(doc, content);
+
+    if (doc.containsKey("subject") && doc["subject"].containsKey("id"))
+    {
+        // Create a new document just for the subject id
+        StaticJsonDocument<64> subjectDoc;
+        subjectDoc["subject"]["id"] = doc["subject"]["id"].as<const char *>();
+
+        // Serialize just the subject id to the subjectJson string
+        serializeJson(subjectDoc, subjectJson);
+    }
+    else
+    {
+        subjectJson = ""; // Clear the string if no subject found
+    }
+
     return content;
 }
 
@@ -174,7 +189,7 @@ void Hublink::startAdvertising()
         CHARACTERISTIC_UUID_NODE,
         NIMBLE_PROPERTY::READ);
 
-    pNodeCharacteristic->setValue(metaJson.c_str());
+    pNodeCharacteristic->setValue(subjectJson.c_str());
 
     pService->start();
 
@@ -369,11 +384,6 @@ void Hublink::onDisconnect()
 {
     Serial.println("Hublink node disconnected.");
     deviceConnected = false;
-    // metaJson = readMetaJson();
-    // if (metaJson.length() > 0)
-    // {
-    //     pNodeCharacteristic->setValue(metaJson.c_str());
-    // }
 }
 
 void Hublink::resetBLEState()
@@ -503,6 +513,12 @@ bool Hublink::doBLE()
     }
 
     stopAdvertising();
+
+    if (metaJsonUpdated)
+    {
+        readMetaJson(); // update any new meta.json values
+    }
+    metaJsonUpdated = false;
 
     printMemStats("BLE End");
 
@@ -887,8 +903,6 @@ bool Hublink::finalizeMetaJsonTransfer()
     }
 
     metaJsonTransferInProgress = false;
-
-    Serial.println("Meta.json transfer completed successfully");
     return true;
 }
 

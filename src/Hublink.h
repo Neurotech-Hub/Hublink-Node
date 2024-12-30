@@ -139,6 +139,7 @@ protected:
     // Node content handling
     String metaJson;
     String configuredAdvName = "";
+    String subjectJson = ""; // New variable to store subject JSON string
 
     // Helper functions
     void resetBLEState();
@@ -163,6 +164,7 @@ protected:
     File tempMetaJsonFile;
     unsigned long metaJsonLastChunkTime = 0;
     const unsigned long META_JSON_TIMEOUT_MS = 5000; // 5 second timeout
+    bool metaJsonUpdated = false;
 
     // Meta.json handling methods
     bool beginMetaJsonTransfer();
