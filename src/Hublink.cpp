@@ -359,6 +359,7 @@ void Hublink::onConnect()
 {
     Serial.println("Hublink node connected.");
     deviceConnected = true;
+    didConnect = true;
     watchdogTimer = millis();
     watchdogTimeoutMs = 10000; // Reset to default on each new connection
     NimBLEDevice::setMTU(NEGOTIATE_MTU_SIZE);
@@ -368,11 +369,11 @@ void Hublink::onDisconnect()
 {
     Serial.println("Hublink node disconnected.");
     deviceConnected = false;
-    metaJson = readMetaJson();
-    if (metaJson.length() > 0)
-    {
-        pNodeCharacteristic->setValue(metaJson.c_str());
-    }
+    // metaJson = readMetaJson();
+    // if (metaJson.length() > 0)
+    // {
+    //     pNodeCharacteristic->setValue(metaJson.c_str());
+    // }
 }
 
 void Hublink::resetBLEState()
@@ -383,6 +384,7 @@ void Hublink::resetBLEState()
     allFilesSent = false;
     sendFilenames = false;
     watchdogTimer = 0;
+    didConnect = false;
 
     // Add meta.json cleanup
     if (metaJsonTransferInProgress)
@@ -441,13 +443,13 @@ void Hublink::sleep(uint64_t milliseconds)
     delay(10); // wakeup delay
 }
 
-void Hublink::doBLE()
+bool Hublink::doBLE()
 {
     printMemStats("BLE Start");
 
     startAdvertising();
     unsigned long subLoopStartTime = millis();
-    bool didConnect = false;
+    bool successfulTransfer = false;
 
     // update connection status
     while ((millis() - subLoopStartTime < bleConnectFor * 1000 && !didConnect) || deviceConnected)
@@ -491,6 +493,11 @@ void Hublink::doBLE()
             sendAvailableFilenames();
         }
 
+        if (deviceConnected && allFilesSent)
+        {
+            successfulTransfer = true;
+        }
+
         didConnect |= deviceConnected;
         delay(100);
     }
@@ -498,6 +505,8 @@ void Hublink::doBLE()
     stopAdvertising();
 
     printMemStats("BLE End");
+
+    return successfulTransfer;
 }
 
 // temporaryConnectFor is used to force syncing for some period other than
@@ -508,56 +517,90 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
     unsigned long currentTime = millis();
     bool connectionSuccess = false;
 
+    Serial.printf("Sync called - disabled: %s, temporaryConnectFor: %d\n",
+                  disable ? "true" : "false",
+                  temporaryConnectFor);
+
     if (!disable && (temporaryConnectFor > 0 || currentTime - lastHublinkMillis >= bleConnectEvery * 1000))
     {
-        // If this is our first attempt or we're past the retry interval
+        Serial.printf("Time since last sync: %lu ms (threshold: %lu ms)\n",
+                      currentTime - lastHublinkMillis,
+                      bleConnectEvery * 1000);
+
+        Serial.printf("Retry state - attempted: %s, currentAttempt: %d/%d, timeSinceLastRetry: %lu ms\n",
+                      connectionAttempted ? "true" : "false",
+                      currentRetryAttempt,
+                      reconnectAttempts,
+                      currentTime - lastRetryMillis);
+
         if (!connectionAttempted ||
             (currentRetryAttempt < reconnectAttempts &&
              currentTime - lastRetryMillis >= reconnectEvery))
         {
             Serial.println("Hublink started advertising... ");
 
-            // Store original value
             uint32_t originalConnectFor = bleConnectFor;
-
-            // Temporarily override if specified
             if (temporaryConnectFor > 0)
             {
+                Serial.printf("Using temporary connection duration: %d seconds\n", temporaryConnectFor);
                 bleConnectFor = temporaryConnectFor;
             }
 
-            doBLE();
+            bool connectionSuccess = doBLE();
 
-            // Track connection status
-            connectionSuccess = deviceConnected;
-
-            // Update retry state
             if (!connectionSuccess && tryReconnect)
             {
                 if (!connectionAttempted)
                 {
                     connectionAttempted = true;
                     currentRetryAttempt = 0;
+                    Serial.println("First connection attempt failed, enabling retry logic");
                 }
                 else
                 {
                     currentRetryAttempt++;
+                    Serial.printf("Retry attempt %d/%d scheduled\n",
+                                  currentRetryAttempt,
+                                  reconnectAttempts);
                 }
                 lastRetryMillis = currentTime;
             }
             else
             {
-                // Reset retry state on success or if retries disabled
+                if (connectionSuccess)
+                {
+                    Serial.println("Connection successful, resetting retry state");
+                }
+                else if (!tryReconnect)
+                {
+                    Serial.println("Retries disabled, not attempting reconnection");
+                }
                 connectionAttempted = false;
                 currentRetryAttempt = 0;
             }
 
-            // Restore original value
             bleConnectFor = originalConnectFor;
 
             Serial.printf("Done advertising. Connection %s.\n",
                           connectionSuccess ? "successful" : "failed");
             lastHublinkMillis = millis();
+        }
+        else
+        {
+            Serial.printf("Skipping connection attempt - max retries reached or waiting for retry interval (%lu ms remaining)\n",
+                          reconnectEvery - (currentTime - lastRetryMillis));
+        }
+    }
+    else
+    {
+        if (disable)
+        {
+            Serial.println("Sync skipped - BLE disabled");
+        }
+        else
+        {
+            uint32_t timeUntilNext = (bleConnectEvery * 1000) - (currentTime - lastHublinkMillis);
+            Serial.printf("Sync skipped - %lu ms until next connection attempt\n", timeUntilNext);
         }
     }
 
@@ -741,7 +784,6 @@ bool Hublink::beginMetaJsonTransfer()
     metaJsonTransferInProgress = true;
     lastMetaJsonId = 0;
     metaJsonLastChunkTime = millis();
-    metaJsonRetryCount = 0;
 
     Serial.println("Meta.json transfer started");
     return true;

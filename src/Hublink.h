@@ -84,7 +84,7 @@ public:
 
     void sleep(uint64_t milliseconds);
     void setCPUFrequency(CPUFrequency freq_mhz);
-    void doBLE();
+    bool doBLE();
     bool sync(uint32_t temporaryConnectFor = 0);
 
     // Make callback classes friends
@@ -163,8 +163,6 @@ protected:
     File tempMetaJsonFile;
     unsigned long metaJsonLastChunkTime = 0;
     const unsigned long META_JSON_TIMEOUT_MS = 5000; // 5 second timeout
-    const uint8_t MAX_META_JSON_RETRIES = 3;
-    uint8_t metaJsonRetryCount = 0;
 
     // Meta.json handling methods
     bool beginMetaJsonTransfer();
@@ -178,7 +176,9 @@ protected:
     unsigned long lastRetryMillis = 0;
     bool connectionAttempted = false;
 
-private:
+    // Connection state tracking
+    bool didConnect = false; // Tracks if a connection was established during the current sync cycle
+
     // Critical: Must be called before NimBLE deinit to prevent crashes
     // Removes all callbacks to prevent dangling references during deinit
     void cleanupCallbacks();

@@ -103,18 +103,56 @@ void testInit()
 
 void writeTestFile()
 {
-    Serial.println("Writing test.txt...");
+    Serial.println("Writing meta.json...");
 
-    File file = SD.open("/test.txt", FILE_WRITE);
+    File file = SD.open("/meta.json", FILE_WRITE);
     if (!file)
     {
         Serial.println("Failed to open file for writing!");
         return;
     }
 
-    if (file.println("Hello from SDCardTester!"))
+    const char *jsonContent = R"({
+  "hublink": {
+      "advertise": "HUBLINK",
+      "advertise_every": 30,
+      "advertise_for": 30,
+      "try_reconnect": true,
+      "reconnect_attempts": 3,
+      "reconnect_every": 30000,
+      "disable": false
+  },
+  "subject": {
+      "id": "mouse001",
+      "strain": "C57BL/6",
+      "strain_options": [
+          "C57BL/6",
+          "BALB/c",
+          "129S1/SvImJ",
+          "F344",
+          "Long Evans",
+          "Sprague Dawley"
+      ],
+      "sex": "male",
+      "sex_options": [
+          "male",
+          "female"
+      ]
+  },
+  "fed": {
+      "program": "Classic",
+      "program_options": [
+          "Classic",
+          "Intense",
+          "Minimal",
+          "Custom"
+      ]
+  }
+})";
+
+    if (file.print(jsonContent))
     {
-        Serial.println("Write successful!");
+        Serial.println("meta.json written successfully!");
     }
     else
     {

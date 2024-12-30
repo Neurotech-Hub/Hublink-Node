@@ -28,6 +28,6 @@ void setup()
 void loop()
 {
   hublink.sync();      // only blocks when ready
-  hublink.sleep(1000); // optional light sleep
-  // delay(1000);
+  // hublink.sleep(1000); // optional light sleep
+  delay(1000);
 }
