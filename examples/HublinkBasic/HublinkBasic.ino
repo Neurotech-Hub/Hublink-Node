@@ -22,12 +22,12 @@ void setup()
     }
   }
 
-  // hublink.sync(10000); // force sync to modify meta.json
+  // hublink.sync(10); // force sync to modify meta.json
 }
 
 void loop()
 {
-  hublink.sync();      // only blocks when ready
+  hublink.sync(); // only blocks when ready
   // hublink.sleep(1000); // optional light sleep
   delay(1000);
 }

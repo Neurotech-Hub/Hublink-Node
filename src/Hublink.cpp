@@ -119,8 +119,8 @@ String Hublink::readMetaJson()
         uint32_t every = hublink["reconnect_every"].as<uint32_t>();
         if (every > 0)
         {
-            reconnectEvery = every;
-            Serial.printf("Retry interval set to: %d ms\n", reconnectEvery);
+            reconnectEvery = every * 1000; // Convert seconds to milliseconds
+            Serial.printf("Retry interval set to: %d seconds\n", every);
         }
     }
 
@@ -446,9 +446,10 @@ String Hublink::parseGateway(NimBLECharacteristic *pCharacteristic, const String
     return doc[key].as<String>();
 }
 
-void Hublink::sleep(uint64_t milliseconds)
+void Hublink::sleep(uint64_t seconds)
 {
-    esp_sleep_enable_timer_wakeup(milliseconds * 1000); // Convert to microseconds
+    uint64_t microseconds = seconds * 1000000ULL; // Convert seconds to microseconds
+    esp_sleep_enable_timer_wakeup(microseconds);
     esp_light_sleep_start();
     delay(10); // wakeup delay
 }
@@ -533,7 +534,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
     unsigned long currentTime = millis();
     bool connectionSuccess = false;
 
-    Serial.printf("Sync called - disabled: %s, temporaryConnectFor: %d\n",
+    Serial.printf("Sync called - disabled: %s, temporaryConnectFor: %d seconds\n",
                   disable ? "true" : "false",
                   temporaryConnectFor);
 
@@ -562,7 +563,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
                 bleConnectFor = temporaryConnectFor;
             }
 
-            bool connectionSuccess = doBLE();
+            connectionSuccess = doBLE();
 
             if (!connectionSuccess && tryReconnect)
             {
@@ -595,7 +596,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
                 currentRetryAttempt = 0;
             }
 
-            bleConnectFor = originalConnectFor;
+            bleConnectFor = originalConnectFor; // Restore original value
 
             Serial.printf("Done advertising. Connection %s.\n",
                           connectionSuccess ? "successful" : "failed");

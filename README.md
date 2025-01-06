@@ -4,6 +4,32 @@ Hublink is an Arduino library designed to facilitate Bluetooth Low Energy (BLE) 
 
 Learn more at [https://hublink.cloud](https://hublink.cloud).
 
+## Core Functions
+### sync(uint32_t temporaryConnectFor = 0)
+Manages BLE advertising and connection cycles. Returns true if a connection was established.
+- `temporaryConnectFor`: Optional duration in seconds to override the default advertising period
+- Returns: boolean indicating if connection was successful
+
+Example:
+```cpp
+// Use default advertising period from meta.json
+bool success = hublink.sync();
+
+// Override with 60-second advertising period
+bool success = hublink.sync(60);
+```
+
+### sleep(uint64_t seconds)
+Puts the ESP32 into light sleep mode for the specified duration.
+- `seconds`: Duration to sleep in seconds
+- Returns: void
+
+Example:
+```cpp
+// Sleep for 5 seconds
+hublink.sleep(5);
+```
+
 ## Installation
 1. Download the library from the [GitHub repository](https://github.com/Neurotech-Hub/HublinkNode)
 2. Place the `HublinkNode` folder into your Arduino libraries directory
@@ -27,7 +53,7 @@ The library accepts configuration via a file on the SD card in JSON format.
       "advertise_for": 30,
       "try_reconnect": true,
       "reconnect_attempts": 3,
-      "reconnect_every": 30000,
+      "reconnect_every": 30,
       "disable": false
   },
   "subject": {
@@ -65,7 +91,7 @@ Where,
 - `interval_for`: Duration of each advertising period in seconds
 - `try_reconnect`: Enables/disables automatic reconnection attempts (default: true)
 - `reconnect_attempts`: Number of reconnection attempts if initial connection fails (default: 3)
-- `reconnect_every`: Milliseconds between reconnection attempts (default: 30000)
+- `reconnect_every`: Seconds between reconnection attempts (default: 30)
 - `disable`: Enables/disables BLE functionality
 
 Hublink uses [bblanchon/ArduinoJson](https://github.com/bblanchon/ArduinoJson) to parse the JSON file. There are a number of free JSON editors/visualizers (e.g., [JSON to Graph Converter](https://jsonviewer.tools/editor)).
