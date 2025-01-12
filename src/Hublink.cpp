@@ -225,6 +225,7 @@ void Hublink::stopAdvertising()
 
     resetBLEState();
     NimBLEDevice::deinit(true);
+    delay(100); // Add delay after deinit
 }
 
 void Hublink::cleanupCallbacks()
