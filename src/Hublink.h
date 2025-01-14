@@ -77,9 +77,6 @@ public:
     std::vector<String> validExtensions = {".txt", ".csv", ".log", ".json"};
 
     // BLE configuration
-    uint32_t bleConnectEvery = 300;
-    uint32_t bleConnectFor = 30;
-    bool disable = false;
     String advName;
 
     void sleep(uint64_t milliseconds);
@@ -139,7 +136,7 @@ protected:
     // Node content handling
     String metaJson;
     String configuredAdvName = "";
-    String subjectJson = ""; // New variable to store subject JSON string
+    String upload_path_json = ""; // JSON-encoded upload path for BLE characteristic
 
     // Helper functions
     void resetBLEState();
@@ -184,6 +181,21 @@ protected:
     // Critical: Must be called before NimBLE deinit to prevent crashes
     // Removes all callbacks to prevent dangling references during deinit
     void cleanupCallbacks();
+
+    // Default values for BLE configuration
+    static constexpr uint32_t DEFAULT_CONNECT_EVERY = 300; // 5 minutes
+    static constexpr uint32_t DEFAULT_CONNECT_FOR = 30;    // 30 seconds
+    static constexpr bool DEFAULT_DISABLE = false;
+    static constexpr const char *DEFAULT_UPLOAD_PATH = "/";
+
+    // BLE configuration (initialized with defaults)
+    uint32_t bleConnectEvery = DEFAULT_CONNECT_EVERY;
+    uint32_t bleConnectFor = DEFAULT_CONNECT_FOR;
+    bool disable = DEFAULT_DISABLE;
+    String upload_path = DEFAULT_UPLOAD_PATH;
+
+    // Helper function to extract nested JSON values
+    String getNestedJsonValue(const JsonDocument &doc, const String &path);
 };
 
 // Global pointer declaration

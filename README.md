@@ -54,6 +54,8 @@ The library accepts configuration via a file on the SD card in JSON format.
       "try_reconnect": true,
       "reconnect_attempts": 3,
       "reconnect_every": 30,
+      "upload_path": "/FED",
+      "append_path": "subject:id",
       "disable": false
   },
   "subject": {

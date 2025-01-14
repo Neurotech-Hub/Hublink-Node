@@ -49,8 +49,33 @@ bool Hublink::begin(String defaultAdvName, bool allowOverride)
     return true;
 }
 
+String Hublink::getNestedJsonValue(const JsonDocument &doc, const String &path)
+{
+    // Split path into parts (e.g., "subject:id" -> ["subject", "id"])
+    int colonPos = path.indexOf(':');
+    if (colonPos == -1)
+        return "";
+
+    String parent = path.substring(0, colonPos);
+    String child = path.substring(colonPos + 1);
+
+    // Check if parent exists and has child
+    if (doc.containsKey(parent) && doc[parent].containsKey(child))
+    {
+        return doc[parent][child].as<String>();
+    }
+
+    return "";
+}
+
 String Hublink::readMetaJson()
 {
+    // Reset to defaults
+    bleConnectEvery = DEFAULT_CONNECT_EVERY;
+    bleConnectFor = DEFAULT_CONNECT_FOR;
+    disable = DEFAULT_DISABLE;
+    upload_path = DEFAULT_UPLOAD_PATH;
+
     if (!initSD())
     {
         Serial.println("Failed to initialize SD card when reading meta.json");
@@ -60,7 +85,7 @@ String Hublink::readMetaJson()
     File configFile = SD.open(META_JSON_PATH, FILE_READ);
     if (!configFile)
     {
-        Serial.println("No meta.json file found");
+        Serial.println("No meta.json file found, using defaults");
         return "";
     }
 
@@ -82,6 +107,40 @@ String Hublink::readMetaJson()
     if (hublink.containsKey("advertise"))
     {
         configuredAdvName = hublink["advertise"].as<String>();
+    }
+
+    // Handle upload path and append path
+    if (hublink.containsKey("upload_path"))
+    {
+        String path = hublink["upload_path"].as<String>();
+        if (path.length() > 0)
+        {
+            upload_path = path;
+            // Ensure path starts with /
+            if (!upload_path.startsWith("/"))
+            {
+                upload_path = "/" + upload_path;
+            }
+            Serial.printf("Set upload_path from meta.json: %s\n", upload_path.c_str());
+        }
+    }
+
+    // Handle append_path if it exists
+    if (hublink.containsKey("append_path"))
+    {
+        String appendPath = hublink["append_path"].as<String>();
+        String appendValue = getNestedJsonValue(doc, appendPath);
+        Serial.printf("Found append_path: %s -> %s\n", appendPath.c_str(), appendValue.c_str());
+        if (appendValue.length() > 0)
+        {
+            // Ensure proper path formatting
+            if (!upload_path.endsWith("/"))
+            {
+                upload_path += "/";
+            }
+            upload_path += appendValue;
+            Serial.printf("Final upload_path: %s\n", upload_path.c_str());
+        }
     }
 
     if (hublink.containsKey("advertise_every") && hublink.containsKey("advertise_for"))
@@ -130,22 +189,12 @@ String Hublink::readMetaJson()
         Serial.printf("BLE disable flag set to: %s\n", disable ? "true" : "false");
     }
 
-    // Convert the hublink object to a string for BLE characteristic
-    serializeJson(doc, content);
-
-    if (doc.containsKey("subject") && doc["subject"].containsKey("id"))
-    {
-        // Create a new document just for the subject id
-        StaticJsonDocument<64> subjectDoc;
-        subjectDoc["subject"]["id"] = doc["subject"]["id"].as<const char *>();
-
-        // Serialize just the subject id to the subjectJson string
-        serializeJson(subjectDoc, subjectJson);
-    }
-    else
-    {
-        subjectJson = ""; // Clear the string if no subject found
-    }
+    // Create JSON for upload_path
+    StaticJsonDocument<128> pathDoc;
+    pathDoc["upload_path"] = upload_path;
+    upload_path_json = "";
+    serializeJson(pathDoc, upload_path_json);
+    Serial.printf("Encoded upload path JSON: %s\n", upload_path_json.c_str());
 
     return content;
 }
@@ -189,7 +238,7 @@ void Hublink::startAdvertising()
         CHARACTERISTIC_UUID_NODE,
         NIMBLE_PROPERTY::READ);
 
-    pNodeCharacteristic->setValue(subjectJson.c_str());
+    pNodeCharacteristic->setValue(upload_path_json.c_str());
 
     pService->start();
 
@@ -545,11 +594,22 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
                       currentTime - lastHublinkMillis,
                       bleConnectEvery * 1000);
 
+        // Update retry state message to show actual attempt number
         Serial.printf("Retry state - attempted: %s, currentAttempt: %d/%d, timeSinceLastRetry: %lu ms\n",
                       connectionAttempted ? "true" : "false",
-                      currentRetryAttempt,
+                      connectionAttempted ? currentRetryAttempt + 1 : 0, // Show actual attempt number
                       reconnectAttempts,
                       currentTime - lastRetryMillis);
+
+        // Add this check to reset retry state when max attempts reached
+        if (connectionAttempted && currentRetryAttempt >= reconnectAttempts)
+        {
+            Serial.println("Max retries reached, resetting retry state");
+            connectionAttempted = false;
+            currentRetryAttempt = 0;
+            lastHublinkMillis = currentTime; // Reset sync timer
+            return false;
+        }
 
         if (!connectionAttempted ||
             (currentRetryAttempt < reconnectAttempts &&
@@ -571,7 +631,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
                 if (!connectionAttempted)
                 {
                     connectionAttempted = true;
-                    currentRetryAttempt = 0;
+                    currentRetryAttempt = 1;
                     Serial.println("First connection attempt failed, enabling retry logic");
                 }
                 else
