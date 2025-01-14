@@ -584,30 +584,28 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
     unsigned long currentTime = millis();
     bool connectionSuccess = false;
 
-    Serial.printf("Sync called - disabled: %s, temporaryConnectFor: %d seconds\n",
-                  disable ? "true" : "false",
-                  temporaryConnectFor);
+    // Serial.printf("Sync called - disabled: %s, temporaryConnectFor: %d seconds\n",
+    //               disable ? "true" : "false",
+    //               temporaryConnectFor);
 
     if (!disable && (temporaryConnectFor > 0 || currentTime - lastHublinkMillis >= bleConnectEvery * 1000))
     {
-        Serial.printf("Time since last sync: %lu ms (threshold: %lu ms)\n",
-                      currentTime - lastHublinkMillis,
-                      bleConnectEvery * 1000);
+        // Serial.printf("Time since last sync: %lu ms (threshold: %lu ms)\n",
+        //               currentTime - lastHublinkMillis,
+        //               bleConnectEvery * 1000);
 
-        // Update retry state message to show actual attempt number
-        Serial.printf("Retry state - attempted: %s, currentAttempt: %d/%d, timeSinceLastRetry: %lu ms\n",
-                      connectionAttempted ? "true" : "false",
-                      connectionAttempted ? currentRetryAttempt + 1 : 0, // Show actual attempt number
-                      reconnectAttempts,
-                      currentTime - lastRetryMillis);
+        // Serial.printf("Retry state - attempted: %s, currentAttempt: %d/%d, timeSinceLastRetry: %lu ms\n",
+        //               connectionAttempted ? "true" : "false",
+        //               connectionAttempted ? currentRetryAttempt + 1 : 0,
+        //               reconnectAttempts,
+        //               currentTime - lastRetryMillis);
 
-        // Add this check to reset retry state when max attempts reached
         if (connectionAttempted && currentRetryAttempt >= reconnectAttempts)
         {
-            Serial.println("Max retries reached, resetting retry state");
+            // Serial.println("Max retries reached, resetting retry state");
             connectionAttempted = false;
             currentRetryAttempt = 0;
-            lastHublinkMillis = currentTime; // Reset sync timer
+            lastHublinkMillis = currentTime;
             return false;
         }
 
@@ -657,7 +655,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
                 currentRetryAttempt = 0;
             }
 
-            bleConnectFor = originalConnectFor; // Restore original value
+            bleConnectFor = originalConnectFor;
 
             Serial.printf("Done advertising. Connection %s.\n",
                           connectionSuccess ? "successful" : "failed");
@@ -665,20 +663,20 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
         }
         else
         {
-            Serial.printf("Skipping connection attempt - max retries reached or waiting for retry interval (%lu ms remaining)\n",
-                          reconnectEvery - (currentTime - lastRetryMillis));
+            // Serial.printf("Skipping connection attempt - max retries reached or waiting for retry interval (%lu ms remaining)\n",
+            //               reconnectEvery - (currentTime - lastRetryMillis));
         }
     }
     else
     {
         if (disable)
         {
-            Serial.println("Sync skipped - BLE disabled");
+            // Serial.println("Sync skipped - BLE disabled");
         }
         else
         {
             uint32_t timeUntilNext = (bleConnectEvery * 1000) - (currentTime - lastHublinkMillis);
-            Serial.printf("Sync skipped - %lu ms until next connection attempt\n", timeUntilNext);
+            // Serial.printf("Sync skipped - %lu ms until next connection attempt\n", timeUntilNext);
         }
     }
 
