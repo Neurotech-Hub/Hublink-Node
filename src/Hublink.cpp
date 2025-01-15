@@ -506,8 +506,6 @@ void Hublink::sleep(uint64_t seconds)
 
 bool Hublink::doBLE()
 {
-    printMemStats("BLE Start");
-
     startAdvertising();
     unsigned long subLoopStartTime = millis();
     bool successfulTransfer = false;
@@ -570,8 +568,6 @@ bool Hublink::doBLE()
         readMetaJson(); // update any new meta.json values
     }
     metaJsonUpdated = false;
-
-    printMemStats("BLE End");
 
     return successfulTransfer;
 }
