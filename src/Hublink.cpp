@@ -663,18 +663,18 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
             //               reconnectEvery - (currentTime - lastRetryMillis));
         }
     }
-    else
-    {
-        if (disable)
-        {
-            // Serial.println("Sync skipped - BLE disabled");
-        }
-        else
-        {
-            uint32_t timeUntilNext = (bleConnectEvery * 1000) - (currentTime - lastHublinkMillis);
-            // Serial.printf("Sync skipped - %lu ms until next connection attempt\n", timeUntilNext);
-        }
-    }
+    // else
+    // {
+    //     if (disable)
+    //     {
+    //         Serial.println("Sync skipped - BLE disabled");
+    //     }
+    //     else
+    //     {
+    //         uint32_t timeUntilNext = (bleConnectEvery * 1000) - (currentTime - lastHublinkMillis);
+    //         Serial.printf("Sync skipped - %lu ms until next connection attempt\n", timeUntilNext);
+    //     }
+    // }
 
     return connectionSuccess;
 }
