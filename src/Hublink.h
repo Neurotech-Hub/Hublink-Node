@@ -53,7 +53,7 @@ public:
     Hublink(uint8_t chipSelect = SS, uint32_t clockFrequency = 1000000);
 
     // BLE control
-    bool begin(String defaultAdvName = "HUBLINK", bool allowOverride = true);
+    bool begin(String advName = "HUBLINK");
     bool initSD();
     void startAdvertising();
     void stopAdvertising();
@@ -77,7 +77,7 @@ public:
     std::vector<String> validExtensions = {".txt", ".csv", ".log", ".json"};
 
     // BLE configuration
-    String advName;
+    String advertise;
 
     void sleep(uint64_t milliseconds);
     void setCPUFrequency(CPUFrequency freq_mhz);
@@ -183,16 +183,24 @@ protected:
     void cleanupCallbacks();
 
     // Default values for BLE configuration
-    static constexpr uint32_t DEFAULT_CONNECT_EVERY = 300; // 5 minutes
-    static constexpr uint32_t DEFAULT_CONNECT_FOR = 30;    // 30 seconds
+    static constexpr uint32_t DEFAULT_ADVERTISE_EVERY = 300; // 5 minutes
+    static constexpr uint32_t DEFAULT_ADVERTISE_FOR = 30;    // 30 seconds
     static constexpr bool DEFAULT_DISABLE = false;
     static constexpr const char *DEFAULT_UPLOAD_PATH = "/";
+    static constexpr const char *DEFAULT_APPEND_PATH = "";
+    static constexpr bool DEFAULT_TRY_RECONNECT = true;
+    static constexpr uint8_t DEFAULT_RECONNECT_ATTEMPTS = 3;
+    static constexpr uint32_t DEFAULT_RECONNECT_EVERY = 30; // seconds
 
     // BLE configuration (initialized with defaults)
-    uint32_t bleConnectEvery = DEFAULT_CONNECT_EVERY;
-    uint32_t bleConnectFor = DEFAULT_CONNECT_FOR;
+    uint32_t advertise_every = DEFAULT_ADVERTISE_EVERY;
+    uint32_t advertise_for = DEFAULT_ADVERTISE_FOR;
     bool disable = DEFAULT_DISABLE;
     String upload_path = DEFAULT_UPLOAD_PATH;
+    String append_path = DEFAULT_APPEND_PATH;
+    bool try_reconnect = DEFAULT_TRY_RECONNECT;
+    uint8_t reconnect_attempts = DEFAULT_RECONNECT_ATTEMPTS;
+    uint32_t reconnect_every = DEFAULT_RECONNECT_EVERY;
 
     // Helper function to extract nested JSON values
     String getNestedJsonValue(const JsonDocument &doc, const String &path);

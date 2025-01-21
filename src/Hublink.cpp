@@ -21,7 +21,7 @@ Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency)
     g_hublink = this; // Set the global pointer
 }
 
-bool Hublink::begin(String defaultAdvName, bool allowOverride)
+bool Hublink::begin(String advName)
 {
     // Set CPU frequency to minimum required for radio operation
     setCPUFrequency(CPUFrequency::MHz_80);
@@ -34,16 +34,19 @@ bool Hublink::begin(String defaultAdvName, bool allowOverride)
     }
     Serial.println("✓ SD Card.");
 
+    advertise = advName;
+    // Reset to defaults
+    advertise_every = DEFAULT_ADVERTISE_EVERY;
+    advertise_for = DEFAULT_ADVERTISE_FOR;
+    disable = DEFAULT_DISABLE;
+    upload_path = DEFAULT_UPLOAD_PATH;
+    append_path = DEFAULT_APPEND_PATH;
+    try_reconnect = DEFAULT_TRY_RECONNECT;
+    reconnect_attempts = DEFAULT_RECONNECT_ATTEMPTS;
+    reconnect_every = DEFAULT_RECONNECT_EVERY;
+
     // 3. Read meta.json: set advertising name, subject id
     readMetaJson();
-    if (allowOverride && configuredAdvName.length() > 0)
-    {
-        advName = configuredAdvName;
-    }
-    else
-    {
-        advName = defaultAdvName;
-    }
 
     lastHublinkMillis = millis();
     return true;
@@ -70,12 +73,6 @@ String Hublink::getNestedJsonValue(const JsonDocument &doc, const String &path)
 
 String Hublink::readMetaJson()
 {
-    // Reset to defaults
-    bleConnectEvery = DEFAULT_CONNECT_EVERY;
-    bleConnectFor = DEFAULT_CONNECT_FOR;
-    disable = DEFAULT_DISABLE;
-    upload_path = DEFAULT_UPLOAD_PATH;
-
     if (!initSD())
     {
         Serial.println("Failed to initialize SD card when reading meta.json");
@@ -106,7 +103,7 @@ String Hublink::readMetaJson()
     // Parse configuration
     if (hublink.containsKey("advertise"))
     {
-        configuredAdvName = hublink["advertise"].as<String>();
+        advertise = hublink["advertise"].as<String>();
     }
 
     // Handle upload path and append path
@@ -150,9 +147,9 @@ String Hublink::readMetaJson()
 
         if (newEvery > 0 && newFor > 0)
         {
-            bleConnectEvery = newEvery;
-            bleConnectFor = newFor;
-            Serial.printf("Updated intervals: every=%d, for=%d\n", bleConnectEvery, bleConnectFor);
+            advertise_every = newEvery;
+            advertise_for = newFor;
+            Serial.printf("Updated intervals: every=%d, for=%d\n", advertise_every, advertise_for);
         }
     }
 
@@ -206,7 +203,7 @@ void Hublink::setCPUFrequency(CPUFrequency freq_mhz)
 
 void Hublink::startAdvertising()
 {
-    NimBLEDevice::init(advName.c_str());
+    NimBLEDevice::init(advertise.c_str());
 
     pServer = NimBLEDevice::createServer();
     if (!pServer)
@@ -245,7 +242,7 @@ void Hublink::startAdvertising()
     NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SERVICE_UUID);
     NimBLEAdvertisementData scanResponse;
-    scanResponse.setName(advName.c_str());
+    scanResponse.setName(advertise.c_str());
     pAdvertising->setScanResponseData(scanResponse);
     pAdvertising->start();
 }
@@ -511,7 +508,7 @@ bool Hublink::doBLE()
     bool successfulTransfer = false;
 
     // update connection status
-    while ((millis() - subLoopStartTime < bleConnectFor * 1000 && !didConnect) || deviceConnected)
+    while ((millis() - subLoopStartTime < advertise_for * 1000 && !didConnect) || deviceConnected)
     {
         // Watchdog timer
         if (deviceConnected && (millis() - watchdogTimer > watchdogTimeoutMs))
@@ -584,11 +581,11 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
     //               disable ? "true" : "false",
     //               temporaryConnectFor);
 
-    if (!disable && (temporaryConnectFor > 0 || currentTime - lastHublinkMillis >= bleConnectEvery * 1000))
+    if (!disable && (temporaryConnectFor > 0 || currentTime - lastHublinkMillis >= advertise_every * 1000))
     {
         // Serial.printf("Time since last sync: %lu ms (threshold: %lu ms)\n",
         //               currentTime - lastHublinkMillis,
-        //               bleConnectEvery * 1000);
+        //               advertise_every * 1000);
 
         // Serial.printf("Retry state - attempted: %s, currentAttempt: %d/%d, timeSinceLastRetry: %lu ms\n",
         //               connectionAttempted ? "true" : "false",
@@ -611,16 +608,16 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
         {
             Serial.println("Hublink started advertising... ");
 
-            uint32_t originalConnectFor = bleConnectFor;
+            uint32_t originalConnectFor = advertise_for;
             if (temporaryConnectFor > 0)
             {
                 Serial.printf("Using temporary connection duration: %d seconds\n", temporaryConnectFor);
-                bleConnectFor = temporaryConnectFor;
+                advertise_for = temporaryConnectFor;
             }
 
             connectionSuccess = doBLE();
 
-            if (!connectionSuccess && tryReconnect)
+            if (!connectionSuccess && tryReconnect && temporaryConnectFor == 0) // Only retry if not temporary
             {
                 if (!connectionAttempted)
                 {
@@ -643,7 +640,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
                 {
                     Serial.println("Connection successful, resetting retry state");
                 }
-                else if (!tryReconnect)
+                else if (!tryReconnect || temporaryConnectFor > 0)
                 {
                     Serial.println("Retries disabled, not attempting reconnection");
                 }
@@ -651,7 +648,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
                 currentRetryAttempt = 0;
             }
 
-            bleConnectFor = originalConnectFor;
+            advertise_for = originalConnectFor;
 
             Serial.printf("Done advertising. Connection %s.\n",
                           connectionSuccess ? "successful" : "failed");
@@ -671,7 +668,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
     //     }
     //     else
     //     {
-    //         uint32_t timeUntilNext = (bleConnectEvery * 1000) - (currentTime - lastHublinkMillis);
+    //         uint32_t timeUntilNext = (advertise_every * 1000) - (currentTime - lastHublinkMillis);
     //         Serial.printf("Sync skipped - %lu ms until next connection attempt\n", timeUntilNext);
     //     }
     // }
