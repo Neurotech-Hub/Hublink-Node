@@ -363,6 +363,10 @@ void Hublink::handleFileTransfer(String fileName)
     if (!file)
     {
         Serial.printf("Failed to open file: %s\n", fileName.c_str());
+        if (!sendIndication(pFileTransferCharacteristic, (uint8_t *)"NFF", 3))
+        {
+            Serial.println("Failed to send NFF (no file found) indication");
+        }
         return;
     }
 
