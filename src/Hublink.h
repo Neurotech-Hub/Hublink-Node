@@ -204,6 +204,10 @@ protected:
 
     // Helper function to extract nested JSON values
     String getNestedJsonValue(const JsonDocument &doc, const String &path);
+
+    // Path processing helpers
+    String sanitizePath(const String &path);
+    String processAppendPath(const JsonDocument &doc, const String &basePath, const String &appendPath);
 };
 
 // Global pointer declaration

@@ -52,6 +52,33 @@ bool Hublink::begin(String advName)
     return true;
 }
 
+String Hublink::sanitizePath(const String &path)
+{
+    String sanitized = "";
+    for (char c : path)
+    {
+        // Allow alphanumeric, hyphen, underscore, plus, period
+        if (isalnum(c) || c == '-' || c == '_' || c == '+' || c == '.' || c == '/')
+        {
+            sanitized += c;
+        }
+    }
+
+    // Replace multiple consecutive slashes with a single slash
+    while (sanitized.indexOf("//") != -1)
+    {
+        sanitized.replace("//", "/");
+    }
+
+    // Remove trailing slash if present
+    while (sanitized.endsWith("/"))
+    {
+        sanitized = sanitized.substring(0, sanitized.length() - 1);
+    }
+
+    return sanitized;
+}
+
 String Hublink::getNestedJsonValue(const JsonDocument &doc, const String &path)
 {
     // Split path into parts (e.g., "subject:id" -> ["subject", "id"])
@@ -65,10 +92,53 @@ String Hublink::getNestedJsonValue(const JsonDocument &doc, const String &path)
     // Check if parent exists and has child
     if (doc.containsKey(parent) && doc[parent].containsKey(child))
     {
-        return doc[parent][child].as<String>();
+        String value = doc[parent][child].as<String>();
+        // Return empty string if the value is empty or only whitespace
+        value.trim();
+        return value;
     }
 
     return "";
+}
+
+String Hublink::processAppendPath(const JsonDocument &doc, const String &basePath, const String &appendPath)
+{
+    String finalPath = basePath;
+
+    // Split append_path by '/'
+    int startPos = 0;
+    int slashPos;
+
+    while ((slashPos = appendPath.indexOf('/', startPos)) != -1 || startPos < appendPath.length())
+    {
+        // Extract the current pair
+        String pair;
+        if (slashPos == -1)
+        {
+            pair = appendPath.substring(startPos);
+            startPos = appendPath.length();
+        }
+        else
+        {
+            pair = appendPath.substring(startPos, slashPos);
+            startPos = slashPos + 1;
+        }
+
+        // Get and validate the nested value
+        String value = getNestedJsonValue(doc, pair);
+        if (value.length() > 0)
+        {
+            // Add separator if needed
+            if (!finalPath.endsWith("/"))
+            {
+                finalPath += "/";
+            }
+            finalPath += value;
+        }
+    }
+
+    // Sanitize the complete path
+    return sanitizePath(finalPath);
 }
 
 String Hublink::readMetaJson()
@@ -126,16 +196,9 @@ String Hublink::readMetaJson()
     if (hublink.containsKey("append_path"))
     {
         String appendPath = hublink["append_path"].as<String>();
-        String appendValue = getNestedJsonValue(doc, appendPath);
-        Serial.printf("Found append_path: %s -> %s\n", appendPath.c_str(), appendValue.c_str());
-        if (appendValue.length() > 0)
+        if (appendPath.length() > 0)
         {
-            // Ensure proper path formatting
-            if (!upload_path.endsWith("/"))
-            {
-                upload_path += "/";
-            }
-            upload_path += appendValue;
+            upload_path = processAppendPath(doc, upload_path, appendPath);
             Serial.printf("Final upload_path: %s\n", upload_path.c_str());
         }
     }

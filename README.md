@@ -55,7 +55,7 @@ The library accepts configuration via a file on the SD card in JSON format.
       "reconnect_attempts": 3,
       "reconnect_every": 30,
       "upload_path": "/FED",
-      "append_path": "subject:id",
+      "append_path": "subject:id/experimenter:name",
       "disable": false
   },
   "subject": {
@@ -74,6 +74,9 @@ The library accepts configuration via a file on the SD card in JSON format.
           "male",
           "female"
       ]
+  },
+  "experimenter": {
+      "name": "john_doe"
   },
   "fed": {
       "program": "Classic",
@@ -94,7 +97,30 @@ Where,
 - `try_reconnect`: Enables/disables automatic reconnection attempts (default: true)
 - `reconnect_attempts`: Number of reconnection attempts if initial connection fails (default: 3)
 - `reconnect_every`: Seconds between reconnection attempts (default: 30)
+- `upload_path`: Base path for file uploads (e.g., "/FED")
+- `append_path`: Dynamic path segments using nested JSON values (e.g., "subject:id/experimenter:name")
 - `disable`: Enables/disables BLE functionality
+
+#### Path Construction
+The `append_path` field supports multiple nested JSON values separated by forward slashes. For example:
+
+- Single value: `"append_path": "subject:id"`
+  - Result: `/FED/mouse001`
+
+- Multiple values: `"append_path": "subject:id/experimenter:name"`
+  - Result: `/FED/mouse001/john_doe`
+
+The path construction:
+1. Starts with `upload_path`
+2. Appends each value specified in `append_path` if it exists and is not empty
+3. Skips any missing or empty values
+4. Sanitizes the path to ensure it's valid for S3 storage:
+   - Allows alphanumeric characters (a-z, A-Z, 0-9)
+   - Allows hyphen (-), underscore (_), plus (+), period (.)
+   - Removes duplicate slashes
+   - Removes trailing slashes
+
+For example, if `experimenter:name` is missing or empty, the path would be `/FED/mouse001` instead of `/FED/mouse001/`.
 
 Hublink uses [bblanchon/ArduinoJson](https://github.com/bblanchon/ArduinoJson) to parse the JSON file. There are a number of free JSON editors/visualizers (e.g., [JSON to Graph Converter](https://jsonviewer.tools/editor)).
 
