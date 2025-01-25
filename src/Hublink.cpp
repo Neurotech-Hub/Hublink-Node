@@ -641,14 +641,14 @@ bool Hublink::doBLE()
 // to place it in setup() to attempt to connect and modify meta.json
 bool Hublink::sync(uint32_t temporaryConnectFor)
 {
-    unsigned long currentTime = millis();
+    uint32_t currentTime = millis();
     bool connectionSuccess = false;
 
-    // Serial.printf("Sync called - disabled: %s, temporaryConnectFor: %d seconds\n",
-    //               disable ? "true" : "false",
-    //               temporaryConnectFor);
+    // Cast to uint32_t to ensure consistent arithmetic
+    uint32_t timeSinceLastSync = (uint32_t)(currentTime - lastHublinkMillis);
+    uint32_t syncThreshold = (uint32_t)(advertise_every * 1000UL); // Use UL suffix for clarity
 
-    if (!disable && (temporaryConnectFor > 0 || currentTime - lastHublinkMillis >= advertise_every * 1000))
+    if (!disable && (temporaryConnectFor > 0 || timeSinceLastSync >= syncThreshold))
     {
         // Serial.printf("Time since last sync: %lu ms (threshold: %lu ms)\n",
         //               currentTime - lastHublinkMillis,
