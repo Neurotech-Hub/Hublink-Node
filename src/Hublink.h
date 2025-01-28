@@ -94,16 +94,21 @@ public:
     void setTimestampCallback(TimestampCallback callback);
     void addValidExtension(const String &extension);
     void clearValidExtensions();
-    void setValidExtensions(const std::vector<String> &extensions);
+    void addValidExtensions(const std::vector<String> &extensions);
     const std::vector<String> &getValidExtensions() const;
 
     // Add new public methods
     void handleMetaJsonChunk(uint32_t id, const String &data);
 
-    // Connection retry configuration
-    bool tryReconnect = true;        // Enable/disable reconnection attempts
-    uint8_t reconnectAttempts = 3;   // Number of reconnection attempts
-    uint32_t reconnectEvery = 30000; // Time between reconnection attempts (ms)
+    // BLE configuration (initialized with defaults)
+    uint32_t advertise_every = DEFAULT_ADVERTISE_EVERY;
+    uint32_t advertise_for = DEFAULT_ADVERTISE_FOR;
+    bool disable = DEFAULT_DISABLE;
+    String upload_path = DEFAULT_UPLOAD_PATH;
+    String append_path = DEFAULT_APPEND_PATH;
+    bool try_reconnect = DEFAULT_TRY_RECONNECT;
+    uint8_t reconnect_attempts = DEFAULT_RECONNECT_ATTEMPTS;
+    uint32_t reconnect_every = DEFAULT_RECONNECT_EVERY;
 
 protected:
     // BLE characteristics
@@ -191,16 +196,6 @@ protected:
     static constexpr bool DEFAULT_TRY_RECONNECT = true;
     static constexpr uint8_t DEFAULT_RECONNECT_ATTEMPTS = 3;
     static constexpr uint32_t DEFAULT_RECONNECT_EVERY = 30; // seconds
-
-    // BLE configuration (initialized with defaults)
-    uint32_t advertise_every = DEFAULT_ADVERTISE_EVERY;
-    uint32_t advertise_for = DEFAULT_ADVERTISE_FOR;
-    bool disable = DEFAULT_DISABLE;
-    String upload_path = DEFAULT_UPLOAD_PATH;
-    String append_path = DEFAULT_APPEND_PATH;
-    bool try_reconnect = DEFAULT_TRY_RECONNECT;
-    uint8_t reconnect_attempts = DEFAULT_RECONNECT_ATTEMPTS;
-    uint32_t reconnect_every = DEFAULT_RECONNECT_EVERY;
 
     // Helper function to extract nested JSON values
     String getNestedJsonValue(const JsonDocument &doc, const String &path);

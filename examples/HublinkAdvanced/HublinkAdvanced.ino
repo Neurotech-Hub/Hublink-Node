@@ -23,7 +23,7 @@ void setup()
 
     // initialize SPI for SD card
     SPI.begin(SCK, MISO, MOSI, cs);
-    if (hublink.init())
+    if (hublink.begin())
     {
         Serial.println("✓ Hublink.");
     }
@@ -34,28 +34,32 @@ void setup()
         {
         }
     }
+    hublink.setTimestampCallback(onTimestampReceived);
 
     // Add a single extension
-    hublink.addValidExtension(".xml");
+    hublink.addValidExtensions({".xml", ".json"});
 
     // Or clear and set new extensions
     hublink.clearValidExtensions();
     hublink.addValidExtension(".bin");
-    hublink.addValidExtension(".dat");
 
-    // Wait for serial input while flashing LED
-    // Serial.println("Press any key to continue...");
-    // while (!Serial.available())
-    // {
-    //   digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); // Toggle LED
-    //   delay(200);
-    // }
     digitalWrite(LED_BUILTIN, LOW); // Turn LED off before continuing
 }
 
 void loop()
 {
-    hublink.sync();      // only blocks when ready
-    hublink.sleep(1000); // optional light sleep
+    int syncCount = 0;
+    hublink.try_reconnect = true;
+    hublink.reconnect_attempts = 3;
+    hublink.reconnect_every = 30; // seconds
+    hublink.upload_path = "/myhub";
+    hublink.append_path = String(syncCount);
+
+    hublink.advertise = "hublink"; // override default advertise name
+    if (hublink.sync())
+    {
+        syncCount++;
+    }
+    hublink.sleep(1000); // optional ESP32 light sleep
                          // delay(1000);
 }

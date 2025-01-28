@@ -219,8 +219,8 @@ String Hublink::readMetaJson()
     // Add new retry configuration parsing
     if (hublink.containsKey("try_reconnect"))
     {
-        tryReconnect = hublink["try_reconnect"].as<bool>();
-        Serial.printf("Retry enabled: %s\n", tryReconnect ? "true" : "false");
+        try_reconnect = hublink["try_reconnect"].as<bool>();
+        Serial.printf("Retry enabled: %s\n", try_reconnect ? "true" : "false");
     }
 
     if (hublink.containsKey("reconnect_attempts"))
@@ -228,8 +228,8 @@ String Hublink::readMetaJson()
         uint8_t attempts = hublink["reconnect_attempts"].as<uint8_t>();
         if (attempts > 0)
         {
-            reconnectAttempts = attempts;
-            Serial.printf("Retry attempts set to: %d\n", reconnectAttempts);
+            reconnect_attempts = attempts;
+            Serial.printf("Retry attempts set to: %d\n", reconnect_attempts);
         }
     }
 
@@ -238,7 +238,7 @@ String Hublink::readMetaJson()
         uint32_t every = hublink["reconnect_every"].as<uint32_t>();
         if (every > 0)
         {
-            reconnectEvery = every * 1000; // Convert seconds to milliseconds
+            reconnect_every = every; // Keep in seconds
             Serial.printf("Retry interval set to: %d seconds\n", every);
         }
     }
@@ -636,9 +636,14 @@ bool Hublink::doBLE()
     return successfulTransfer;
 }
 
-// temporaryConnectFor is used to force syncing for some period other than
-// specified in meta.json/during normal runtime. The primary use case is
-// to place it in setup() to attempt to connect and modify meta.json
+/**
+ * Time units for BLE connection parameters:
+ *
+ * @param temporaryConnectFor: seconds - Temporary override for advertising duration
+ * @param advertise_every: seconds - Time between advertising cycles (set in meta.json)
+ * @param advertise_for: seconds - Duration of each advertising cycle (set in meta.json)
+ * @param reconnect_every: seconds - Time between reconnection attempts (set in meta.json)
+ */
 bool Hublink::sync(uint32_t temporaryConnectFor)
 {
     uint32_t currentTime = millis();
@@ -657,10 +662,10 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
         // Serial.printf("Retry state - attempted: %s, currentAttempt: %d/%d, timeSinceLastRetry: %lu ms\n",
         //               connectionAttempted ? "true" : "false",
         //               connectionAttempted ? currentRetryAttempt + 1 : 0,
-        //               reconnectAttempts,
+        //               reconnect_attempts,
         //               currentTime - lastRetryMillis);
 
-        if (connectionAttempted && currentRetryAttempt >= reconnectAttempts)
+        if (connectionAttempted && currentRetryAttempt >= reconnect_attempts)
         {
             // Serial.println("Max retries reached, resetting retry state");
             connectionAttempted = false;
@@ -670,8 +675,8 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
         }
 
         if (!connectionAttempted ||
-            (currentRetryAttempt < reconnectAttempts &&
-             currentTime - lastRetryMillis >= reconnectEvery))
+            (currentRetryAttempt < reconnect_attempts &&
+             currentTime - lastRetryMillis >= reconnect_every * 1000UL)) // Convert to ms here
         {
             Serial.println("Hublink started advertising... ");
 
@@ -684,7 +689,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
 
             connectionSuccess = doBLE();
 
-            if (!connectionSuccess && tryReconnect && temporaryConnectFor == 0) // Only retry if not temporary
+            if (!connectionSuccess && try_reconnect && temporaryConnectFor == 0) // Only retry if not temporary
             {
                 if (!connectionAttempted)
                 {
@@ -697,7 +702,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
                     currentRetryAttempt++;
                     Serial.printf("Retry attempt %d/%d scheduled\n",
                                   currentRetryAttempt,
-                                  reconnectAttempts);
+                                  reconnect_attempts);
                 }
                 lastRetryMillis = currentTime;
             }
@@ -707,7 +712,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
                 {
                     Serial.println("Connection successful, resetting retry state");
                 }
-                else if (!tryReconnect || temporaryConnectFor > 0)
+                else if (!try_reconnect || temporaryConnectFor > 0)
                 {
                     Serial.println("Retries disabled, not attempting reconnection");
                 }
@@ -724,7 +729,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
         else
         {
             // Serial.printf("Skipping connection attempt - max retries reached or waiting for retry interval (%lu ms remaining)\n",
-            //               reconnectEvery - (currentTime - lastRetryMillis));
+            //               reconnect_every - (currentTime - lastRetryMillis));
         }
     }
     // else
@@ -799,7 +804,7 @@ void Hublink::clearValidExtensions()
     validExtensions.clear();
 }
 
-void Hublink::setValidExtensions(const std::vector<String> &extensions)
+void Hublink::addValidExtensions(const std::vector<String> &extensions)
 {
     validExtensions.clear();
     for (const String &ext : extensions)
