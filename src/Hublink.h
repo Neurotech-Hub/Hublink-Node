@@ -54,7 +54,7 @@ public:
 
     // BLE control
     bool begin(String advName = "HUBLINK");
-    bool initSD();
+    bool beginSD();
     void startAdvertising();
     void stopAdvertising();
     void updateMtuSize();
@@ -203,6 +203,12 @@ protected:
     // Path processing helpers
     String sanitizePath(const String &path);
     String processAppendPath(const JsonDocument &doc, const String &basePath, const String &appendPath);
+
+    // Add file handle tracking
+    File rootFile;
+    File transferFile;
+    bool rootFileOpen = false;
+    bool transferFileOpen = false;
 };
 
 // Global pointer declaration

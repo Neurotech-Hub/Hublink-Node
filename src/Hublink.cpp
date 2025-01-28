@@ -27,7 +27,7 @@ bool Hublink::begin(String advName)
     setCPUFrequency(CPUFrequency::MHz_80);
 
     // 2. Initialize SD
-    if (!initSD())
+    if (!beginSD())
     {
         Serial.println("✗ SD Card.");
         return false;
@@ -113,37 +113,44 @@ String Hublink::processAppendPath(const JsonDocument &doc, const String &basePat
     {
         // Extract the current pair
         String pair;
-        if (slashPos == -1)
-        {
-            pair = appendPath.substring(startPos);
-            startPos = appendPath.length();
-        }
-        else
-        {
-            pair = appendPath.substring(startPos, slashPos);
-            startPos = slashPos + 1;
-        }
-
-        // Get and validate the nested value
-        String value = getNestedJsonValue(doc, pair);
-        if (value.length() > 0)
-        {
-            // Add separator if needed
-            if (!finalPath.endsWith("/"))
+        { // Create scope for temporary String management
+            if (slashPos == -1)
             {
-                finalPath += "/";
+                pair = appendPath.substring(startPos);
+                startPos = appendPath.length();
             }
-            finalPath += value;
+            else
+            {
+                pair = appendPath.substring(startPos, slashPos);
+                startPos = slashPos + 1;
+            }
+
+            // Get and validate the nested value
+            String value = getNestedJsonValue(doc, pair);
+            if (value.length() > 0)
+            {
+                // Add separator if needed
+                if (!finalPath.endsWith("/"))
+                {
+                    finalPath += "/";
+                }
+                finalPath += value;
+            }
+
+            // Let Strings go out of scope naturally
         }
     }
 
-    // Sanitize the complete path
-    return sanitizePath(finalPath);
+    // Sanitize and return the complete path
+    String result = sanitizePath(finalPath);
+    finalPath = ""; // Clear the string
+
+    return result;
 }
 
 String Hublink::readMetaJson()
 {
-    if (!initSD())
+    if (!beginSD())
     {
         Serial.println("Failed to initialize SD card when reading meta.json");
         return "";
@@ -355,25 +362,25 @@ void Hublink::cleanupCallbacks()
 }
 
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
-bool Hublink::initSD()
+bool Hublink::beginSD()
 {
     return SD.begin(cs, SPI, clkFreq);
 }
 
 void Hublink::sendAvailableFilenames()
 {
-    if (!initSD())
+    // Check if root directory is valid
+    if (!rootFileOpen) // Changed from checking rootFile directly
     {
-        Serial.println("Failed to initialize SD card");
+        Serial.println("Invalid root directory handle");
         return;
     }
 
-    File root = SD.open("/");
-    String accumulatedFileInfo = ""; // Accumulate file info here
+    String accumulatedFileInfo = "";
     while (deviceConnected)
     {
-        watchdogTimer = millis(); // Reset watchdog timer
-        File entry = root.openNextFile();
+        watchdogTimer = millis();
+        File entry = rootFile.openNextFile();
         if (!entry)
         {
             Serial.println("All filenames sent.");
@@ -395,6 +402,7 @@ void Hublink::sendAvailableFilenames()
                 Serial.println("Failed to send EOF indication");
             }
             allFilesSent = true;
+            accumulatedFileInfo = ""; // Clear the accumulated string
             break;
         }
 
@@ -410,22 +418,14 @@ void Hublink::sendAvailableFilenames()
             accumulatedFileInfo += fileInfo;
         }
     }
-    root.close();
 }
 
 void Hublink::handleFileTransfer(String fileName)
 {
-    // Begin SD communication with updated parameters
-    if (!initSD())
+    // Check if transfer file is valid
+    if (!transferFileOpen) // Changed from checking transferFile directly
     {
-        Serial.println("Failed to initialize SD card");
-        return;
-    }
-
-    File file = SD.open("/" + fileName);
-    if (!file)
-    {
-        Serial.printf("Failed to open file: %s\n", fileName.c_str());
+        Serial.printf("Failed to use file: %s\n", fileName.c_str());
         if (!sendIndication(pFileTransferCharacteristic, (uint8_t *)"NFF", 3))
         {
             Serial.println("Failed to send NFF (no file found) indication");
@@ -434,10 +434,10 @@ void Hublink::handleFileTransfer(String fileName)
     }
 
     uint8_t buffer[mtuSize];
-    while (file.available() && deviceConnected)
+    while (transferFile.available() && deviceConnected)
     {
         watchdogTimer = millis();
-        int bytesRead = file.read(buffer, mtuSize);
+        int bytesRead = transferFile.read(buffer, mtuSize);
 
         if (bytesRead > 0)
         {
@@ -457,7 +457,6 @@ void Hublink::handleFileTransfer(String fileName)
     {
         Serial.println("Failed to send EOF indication");
     }
-    file.close();
     Serial.println("File transfer complete.");
 }
 
@@ -510,10 +509,32 @@ void Hublink::resetBLEState()
     watchdogTimer = 0;
     didConnect = false;
 
-    // Add meta.json cleanup
+    // Enhanced meta.json cleanup
     if (metaJsonTransferInProgress)
     {
         cleanupMetaJsonTransfer();
+    }
+
+    // Clear path-related Strings
+    upload_path_json = "";
+    currentFileName = "";
+
+    // Reset any path construction temporaries
+    if (tempMetaJsonFile)
+    {
+        tempMetaJsonFile.close();
+    }
+
+    // Clean up file handles
+    if (rootFileOpen)
+    {
+        rootFile.close();
+        rootFileOpen = false;
+    }
+    if (transferFileOpen)
+    {
+        transferFile.close();
+        transferFileOpen = false;
     }
 }
 
@@ -570,7 +591,9 @@ void Hublink::sleep(uint64_t seconds)
 
 bool Hublink::doBLE()
 {
+    printMemStats("Before advertising");
     startAdvertising();
+    printMemStats("After advertising");
     unsigned long subLoopStartTime = millis();
     bool successfulTransfer = false;
 
@@ -588,6 +611,18 @@ bool Hublink::doBLE()
                 cleanupMetaJsonTransfer();
             }
 
+            // Cleanup any open file handles
+            if (rootFileOpen)
+            {
+                rootFile.close();
+                rootFileOpen = false;
+            }
+            if (transferFileOpen)
+            {
+                transferFile.close();
+                transferFileOpen = false;
+            }
+
             // Disconnect using the connection handle
             if (pServer->getConnectedCount() > 0)
             {
@@ -602,7 +637,40 @@ bool Hublink::doBLE()
         {
             Serial.print("Requested file: ");
             Serial.println(currentFileName);
-            handleFileTransfer(currentFileName);
+
+            // Initialize SD before opening file
+            if (!beginSD())
+            {
+                Serial.println("Failed to initialize SD card for file transfer");
+                currentFileName = "";
+                continue;
+            }
+
+            // Close any previously open transfer file
+            if (transferFileOpen)
+            {
+                transferFile.close();
+                transferFileOpen = false;
+            }
+
+            // Open new file and check if successful
+            transferFile = SD.open("/" + currentFileName);
+            if (transferFile)
+            {
+                transferFileOpen = true;
+                handleFileTransfer(currentFileName);
+            }
+            else
+            {
+                Serial.println("Failed to open file for transfer");
+            }
+
+            // Clean up after transfer
+            if (transferFileOpen)
+            {
+                transferFile.close();
+                transferFileOpen = false;
+            }
             currentFileName = "";
         }
 
@@ -613,7 +681,39 @@ bool Hublink::doBLE()
             Serial.print("MTU Size (negotiated): ");
             Serial.println(mtuSize);
             Serial.println("Sending filenames...");
-            sendAvailableFilenames();
+
+            // Initialize SD before opening root directory
+            if (!beginSD())
+            {
+                Serial.println("Failed to initialize SD card for file listing");
+                continue;
+            }
+
+            // Close any previously open root directory
+            if (rootFileOpen)
+            {
+                rootFile.close();
+                rootFileOpen = false;
+            }
+
+            // Open root directory and check if successful
+            rootFile = SD.open("/");
+            if (rootFile)
+            {
+                rootFileOpen = true;
+                sendAvailableFilenames();
+            }
+            else
+            {
+                Serial.println("Failed to open root directory");
+            }
+
+            // Clean up after sending filenames
+            if (rootFileOpen)
+            {
+                rootFile.close();
+                rootFileOpen = false;
+            }
         }
 
         if (deviceConnected && allFilesSent)
@@ -625,7 +725,21 @@ bool Hublink::doBLE()
         delay(100);
     }
 
+    // Final cleanup of any remaining open handles
+    if (rootFileOpen)
+    {
+        rootFile.close();
+        rootFileOpen = false;
+    }
+    if (transferFileOpen)
+    {
+        transferFile.close();
+        transferFileOpen = false;
+    }
+
+    printMemStats("Before stopAdvertising");
     stopAdvertising();
+    printMemStats("After stopAdvertising");
 
     if (metaJsonUpdated)
     {
@@ -648,6 +762,12 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
 {
     uint32_t currentTime = millis();
     bool connectionSuccess = false;
+
+    // Add safety check for cleanup at the start of each sync
+    if (!deviceConnected && metaJsonTransferInProgress)
+    {
+        cleanupMetaJsonTransfer();
+    }
 
     // Cast to uint32_t to ensure consistent arithmetic
     uint32_t timeSinceLastSync = (uint32_t)(currentTime - lastHublinkMillis);
@@ -744,6 +864,12 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
     //         Serial.printf("Sync skipped - %lu ms until next connection attempt\n", timeUntilNext);
     //     }
     // }
+
+    if (!connectionSuccess && metaJsonTransferInProgress)
+    {
+        // Ensure cleanup if connection attempt failed
+        cleanupMetaJsonTransfer();
+    }
 
     return connectionSuccess;
 }
@@ -903,7 +1029,7 @@ bool Hublink::sendIndication(NimBLECharacteristic *pChar, const uint8_t *data, s
 
 bool Hublink::beginMetaJsonTransfer()
 {
-    if (!initSD())
+    if (!beginSD())
     {
         Serial.println("Failed to initialize SD for meta.json transfer");
         return false;
@@ -1043,8 +1169,13 @@ void Hublink::cleanupMetaJsonTransfer()
         SD.remove(tempMetaJsonPath);
     }
 
+    // Reset all meta.json related state
     metaJsonTransferInProgress = false;
     lastMetaJsonId = 0;
+    metaJsonLastChunkTime = 0;
+
+    // Clear the temporary path
+    tempMetaJsonPath = "";
 }
 
 void Hublink::handleMetaJsonChunk(uint32_t id, const String &data)
