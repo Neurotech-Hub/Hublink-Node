@@ -274,8 +274,8 @@ void Hublink::setCPUFrequency(CPUFrequency freq_mhz)
 void Hublink::startAdvertising()
 {
     NimBLEDevice::init(advertise.c_str());
-
     pServer = NimBLEDevice::createServer();
+
     if (!pServer)
     {
         Serial.println("Failed to create server!");
@@ -306,6 +306,7 @@ void Hublink::startAdvertising()
         NIMBLE_PROPERTY::READ);
 
     pNodeCharacteristic->setValue(upload_path_json.c_str());
+    Serial.printf("Node characteristic value: %s\n", upload_path_json.c_str());
 
     pService->start();
 
@@ -490,6 +491,13 @@ void Hublink::onConnect()
     didConnect = true;
     watchdogTimer = millis();
     watchdogTimeoutMs = 10000; // Reset to default on each new connection
+
+    // Get the connection handle from the first connected client
+    uint16_t connHandle = pServer->getPeerInfo(0).getConnHandle();
+
+    // Now we can properly update connection parameters in correct order:
+    // connHandle, minInterval, maxInterval, latency, timeout
+    pServer->updateConnParams(connHandle, 6, 8, 0, 100);
     NimBLEDevice::setMTU(NEGOTIATE_MTU_SIZE);
 }
 
@@ -504,6 +512,7 @@ void Hublink::resetBLEState()
     deviceConnected = false;
     piReadyForFilenames = false;
     currentFileName = "";
+    currentFileName = "";
     allFilesSent = false;
     sendFilenames = false;
     watchdogTimer = 0;
@@ -514,10 +523,6 @@ void Hublink::resetBLEState()
     {
         cleanupMetaJsonTransfer();
     }
-
-    // Clear path-related Strings
-    upload_path_json = "";
-    currentFileName = "";
 
     // Reset any path construction temporaries
     if (tempMetaJsonFile)
@@ -591,9 +596,7 @@ void Hublink::sleep(uint64_t seconds)
 
 bool Hublink::doBLE()
 {
-    printMemStats("Before advertising");
     startAdvertising();
-    printMemStats("After advertising");
     unsigned long subLoopStartTime = millis();
     bool successfulTransfer = false;
 
@@ -737,9 +740,7 @@ bool Hublink::doBLE()
         transferFileOpen = false;
     }
 
-    printMemStats("Before stopAdvertising");
     stopAdvertising();
-    printMemStats("After stopAdvertising");
 
     if (metaJsonUpdated)
     {
@@ -983,8 +984,9 @@ public:
         unsigned long start = millis();
         while (!indicationComplete && (millis() - start < timeout))
         {
-            delay(10);
+            delay(1); // avoid tight loop
         }
+        // Serial.printf("Indication complete, took %lu ms\n", millis() - start);
         return indicationComplete; // Return true if we got any response
     }
 };
@@ -1012,14 +1014,14 @@ bool Hublink::sendIndication(NimBLECharacteristic *pChar, const uint8_t *data, s
 
         if (!pChar->indicate())
         {
-            delay(100);
+            delay(10);
             continue;
         }
 
         success = indicationCallbacks.waitForComplete(timeout);
         if (!success)
         {
-            delay(100);
+            delay(10);
         }
     }
 
