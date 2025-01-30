@@ -6,6 +6,7 @@ Hublink hublink(cs);  // Use default Hublink instance
 void setup() {
   Serial.begin(9600);
   delay(1000);
+  pinMode(LED_BUILTIN, OUTPUT);
 
   // initialize SPI for SD card
   // SPI.begin(SCK, MISO, MOSI, cs); // if not using default SCK, MISO, MOSI
@@ -21,7 +22,9 @@ void setup() {
 }
 
 void loop() {
+  digitalWrite(LED_BUILTIN, HIGH);
   hublink.sync();  // only blocks when ready
+  digitalWrite(LED_BUILTIN, LOW);
   // hublink.sleep(1000); // optional light sleep
   delay(1000);
 }
