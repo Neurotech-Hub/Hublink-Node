@@ -274,6 +274,19 @@ void Hublink::setCPUFrequency(CPUFrequency freq_mhz)
 void Hublink::startAdvertising()
 {
     NimBLEDevice::init(advertise.c_str());
+
+    // Set TX power before creating server
+    // Options:
+    // ESP_PWR_LVL_N12 (-12dBm)
+    // ESP_PWR_LVL_N9  (-9dBm)
+    // ESP_PWR_LVL_N6  (-6dBm)
+    // ESP_PWR_LVL_N3  (-3dBm)
+    // ESP_PWR_LVL_N0  (0dBm)
+    // ESP_PWR_LVL_P3  (+3dBm)
+    // ESP_PWR_LVL_P6  (+6dBm)
+    // ESP_PWR_LVL_P9  (+9dBm)
+    NimBLEDevice::setPower(ESP_PWR_LVL_P9); // Maximum power for best performance
+
     pServer = NimBLEDevice::createServer();
 
     if (!pServer)
