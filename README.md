@@ -155,3 +155,33 @@ This library is open-source and available under the MIT license.
 
 ## Contributing
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## TODO
+1. Memory/Resource Cleanup
+[x] Verify cleanupCallbacks() is called in all exit paths
+[ ] Add memory tracking at key points in sync() cycle
+[x] Ensure file handles are properly closed
+2. BLE State Management
+[ ] Add state validation before BLE operations
+[ ] Verify complete deinit between advertising cycles (see below)
+[x] Review static callback instance lifecycle
+3. Timing & Deep Sleep
+[x] Validate timer arithmetic for overflows
+[x] Add proper delays between BLE operations
+[ ] Review initialization after deep sleep
+- Consider testing at begin(), detecting wake from sleep, or sync():
+```cpp
+// Ensure clean BLE state before starting
+if (NimBLEDevice::getInitialized()) {
+    NimBLEDevice::deinit(true);
+    delay(100);
+}
+```
+4. SD Card Operations
+[ ] Add SD card state validation
+[ ] Verify SD reinitialization after sleep
+[x] Review file handle management
+5. Null Pointer Protection
+[x] Add null checks in critical paths
+[x] Validate object state before operations
+[x] Review pointer lifecycle in callbacks

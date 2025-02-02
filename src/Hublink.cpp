@@ -292,6 +292,7 @@ void Hublink::startAdvertising()
     if (!pServer)
     {
         Serial.println("Failed to create server!");
+        cleanupCallbacks();
         return;
     }
 
@@ -333,34 +334,33 @@ void Hublink::startAdvertising()
 
 void Hublink::stopAdvertising()
 {
-    BLEDevice::stopAdvertising();
-    // Critical: Clean up callbacks before deinit to prevent crashes
-    // Order matters: disconnect clients -> remove callbacks -> stop advertising -> deinit
     if (pServer != nullptr)
     {
         // First disconnect any connected clients
         if (pServer->getConnectedCount() > 0)
         {
             pServer->disconnect(0);
-            delay(50); // Give time for disconnect to complete
+            delay(50);
         }
 
-        // Remove all callbacks before deinit
         cleanupCallbacks();
+        delay(20);
 
-        // Stop advertising
+        // Only use NimBLE
         NimBLEDevice::getAdvertising()->stop();
         delay(50);
     }
 
     resetBLEState();
+    delay(20);
+
     NimBLEDevice::deinit(true);
-    delay(100); // Add delay after deinit
+    delay(100);
 }
 
 void Hublink::cleanupCallbacks()
 {
-    // Remove all callbacks before deinit to prevent crashes
+    // Remove BLE callbacks only
     if (pServer != nullptr)
     {
         pServer->setCallbacks(nullptr);
@@ -384,7 +384,7 @@ bool Hublink::beginSD()
 void Hublink::sendAvailableFilenames()
 {
     // Check if root directory is valid
-    if (!rootFileOpen) // Changed from checking rootFile directly
+    if (!rootFileOpen)
     {
         Serial.println("Invalid root directory handle");
         return;
@@ -431,11 +431,17 @@ void Hublink::sendAvailableFilenames()
             }
             accumulatedFileInfo += fileInfo;
         }
+        entry.close(); // Ensure each entry is closed after use
     }
 }
 
 void Hublink::handleFileTransfer(String fileName)
 {
+    if (!pFileTransferCharacteristic)
+    {
+        Serial.println("Warning: Null transfer characteristic");
+        return;
+    }
     // Check if transfer file is valid
     if (!transferFileOpen) // Changed from checking transferFile directly
     {
@@ -499,6 +505,11 @@ bool Hublink::isValidFile(String fileName)
 
 void Hublink::onConnect()
 {
+    if (!pServer)
+    {
+        Serial.println("Warning: Connect callback with null server");
+        return;
+    }
     Serial.println("Hublink node connected.");
     deviceConnected = true;
     didConnect = true;
@@ -516,34 +527,35 @@ void Hublink::onConnect()
 
 void Hublink::onDisconnect()
 {
+    if (!pServer)
+    {
+        Serial.println("Warning: Disconnect callback with null server");
+        return;
+    }
     Serial.println("Hublink node disconnected.");
     deviceConnected = false;
 }
 
 void Hublink::resetBLEState()
 {
+    // BLE state
     deviceConnected = false;
     piReadyForFilenames = false;
-    currentFileName = "";
     currentFileName = "";
     allFilesSent = false;
     sendFilenames = false;
     watchdogTimer = 0;
     didConnect = false;
 
-    // Enhanced meta.json cleanup
+    // Note: Do NOT reset _timestampCallback here
+
+    // Meta.json state
     if (metaJsonTransferInProgress)
     {
         cleanupMetaJsonTransfer();
     }
 
-    // Reset any path construction temporaries
-    if (tempMetaJsonFile)
-    {
-        tempMetaJsonFile.close();
-    }
-
-    // Clean up file handles
+    // File handles
     if (rootFileOpen)
     {
         rootFile.close();
@@ -553,6 +565,10 @@ void Hublink::resetBLEState()
     {
         transferFile.close();
         transferFileOpen = false;
+    }
+    if (tempMetaJsonFile)
+    {
+        tempMetaJsonFile.close();
     }
 }
 
@@ -609,9 +625,17 @@ void Hublink::sleep(uint64_t seconds)
 
 bool Hublink::doBLE()
 {
+    bool successfulTransfer = false;
+
+    // Add cleanup before early returns
+    if (!beginSD())
+    {
+        cleanupCallbacks(); // Add here
+        return false;
+    }
+
     startAdvertising();
     unsigned long subLoopStartTime = millis();
-    bool successfulTransfer = false;
 
     // update connection status
     while ((millis() - subLoopStartTime < advertise_for * 1000 && !didConnect) || deviceConnected)
@@ -621,13 +645,13 @@ bool Hublink::doBLE()
         {
             Serial.println("Hublink node timeout detected, disconnecting...");
 
-            // Cleanup any in-progress transfers
+            // Cleanup any in-progress transfers first
             if (metaJsonTransferInProgress)
             {
                 cleanupMetaJsonTransfer();
             }
 
-            // Cleanup any open file handles
+            // Close files before disconnecting
             if (rootFileOpen)
             {
                 rootFile.close();
@@ -639,7 +663,7 @@ bool Hublink::doBLE()
                 transferFileOpen = false;
             }
 
-            // Disconnect using the connection handle
+            // Then handle disconnect
             if (pServer->getConnectedCount() > 0)
             {
                 NimBLEConnInfo connInfo = pServer->getPeerInfo(0);
@@ -653,14 +677,6 @@ bool Hublink::doBLE()
         {
             Serial.print("Requested file: ");
             Serial.println(currentFileName);
-
-            // Initialize SD before opening file
-            if (!beginSD())
-            {
-                Serial.println("Failed to initialize SD card for file transfer");
-                currentFileName = "";
-                continue;
-            }
 
             // Close any previously open transfer file
             if (transferFileOpen)
@@ -697,13 +713,6 @@ bool Hublink::doBLE()
             Serial.print("MTU Size (negotiated): ");
             Serial.println(mtuSize);
             Serial.println("Sending filenames...");
-
-            // Initialize SD before opening root directory
-            if (!beginSD())
-            {
-                Serial.println("Failed to initialize SD card for file listing");
-                continue;
-            }
 
             // Close any previously open root directory
             if (rootFileOpen)
@@ -761,6 +770,11 @@ bool Hublink::doBLE()
     }
     metaJsonUpdated = false;
 
+    // Ensure cleanup before final return
+    if (!successfulTransfer)
+    {
+        cleanupCallbacks(); // Add here
+    }
     return successfulTransfer;
 }
 
@@ -777,17 +791,43 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
     uint32_t currentTime = millis();
     bool connectionSuccess = false;
 
-    // Add safety check for cleanup at the start of each sync
+    // Handle millis() overflow safely
+    uint32_t timeSinceLastSync;
+    if (currentTime >= lastHublinkMillis)
+    {
+        timeSinceLastSync = currentTime - lastHublinkMillis;
+    }
+    else
+    {
+        // Handle wrap condition
+        timeSinceLastSync = (0xFFFFFFFF - lastHublinkMillis) + currentTime;
+    }
+
+    // Add safety cleanup at start
     if (!deviceConnected && metaJsonTransferInProgress)
     {
+        if (rootFileOpen)
+        {
+            rootFile.close();
+            rootFileOpen = false;
+        }
+        if (transferFileOpen)
+        {
+            transferFile.close();
+            transferFileOpen = false;
+        }
+        cleanupCallbacks();
         cleanupMetaJsonTransfer();
     }
 
-    // Cast to uint32_t to ensure consistent arithmetic
-    uint32_t timeSinceLastSync = (uint32_t)(currentTime - lastHublinkMillis);
-    uint32_t syncThreshold = (uint32_t)(advertise_every * 1000UL); // Use UL suffix for clarity
+    // Add cleanup for early exit conditions
+    if (disable || (temporaryConnectFor == 0 && (currentTime - lastHublinkMillis < advertise_every * 1000)))
+    {
+        cleanupCallbacks();
+        return false;
+    }
 
-    if (!disable && (temporaryConnectFor > 0 || timeSinceLastSync >= syncThreshold))
+    if (!disable && (temporaryConnectFor > 0 || timeSinceLastSync >= advertise_every * 1000UL))
     {
         // Serial.printf("Time since last sync: %lu ms (threshold: %lu ms)\n",
         //               currentTime - lastHublinkMillis,
@@ -1006,8 +1046,14 @@ public:
 
 bool Hublink::sendIndication(NimBLECharacteristic *pChar, const uint8_t *data, size_t length)
 {
+    if (!pChar || !data)
+    {
+        Serial.println("Warning: Null pointer in sendIndication");
+        return false;
+    }
     if (!deviceConnected)
     {
+        Serial.println("Warning: Indication attempted while disconnected");
         return false;
     }
 
