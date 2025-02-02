@@ -31,9 +31,16 @@ hublink.sleep(5);
 ```
 
 ## Installation
-1. Download the library from the [GitHub repository](https://github.com/Neurotech-Hub/HublinkNode)
-2. Place the `HublinkNode` folder into your Arduino libraries directory
-3. Restart the Arduino IDE if it is already open
+1. Download the library from the [GitHub repository](https://github.com/Neurotech-Hub/HublinkNode).
+2. Place the `HublinkNode` folder into your Arduino libraries directory.
+3. Restart the Arduino IDE if it is already open.
+4. Install the dependencies from Arduino IDE:
+   - NimBLE-Arduino
+   - ArduinoJson
+
+### Flashing with Hublink Nodes
+1. If the device has been previously flashed, it may be in a deep sleep state and will not connect to the serial port. To enter boot mode, hold the `Boot` button and toggle the `Reset` button (then release the `Boot` button).
+2. If the Arduino IDE does not indicate that it is connected to "Adafruit Feather ESP32-S3 2MB PSRAM", click Tools -> Board -> esp32 -> Adafruit Feather ESP32-S3 2MB PSRAM (you will need to download the esp32 board package (by espressif) from the Arduino IDE).
 
 ### Prerequisites
 - Install the ESP32 board package in Arduino IDE following the [official guide](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html)
@@ -124,8 +131,10 @@ For example, if `experimenter:name` is missing or empty, the path would be `/FED
 
 Hublink uses [bblanchon/ArduinoJson](https://github.com/bblanchon/ArduinoJson) to parse the JSON file. There are a number of free JSON editors/visualizers (e.g., [JSON to Graph Converter](https://jsonviewer.tools/editor)).
 
-#### Meta.json Transfer Workflow
-The library supports secure transfer of meta.json configuration between client (mobile app) and ESP32:
+## Coming Soon
+
+### Hublink Editor App
+The Hublinke Node library supports secure transfer of meta.json configuration between client (mobile app) and ESP32:
 
 **Reading meta.json (ESP32 → Client)**
 1. Client requests meta.json content
@@ -140,13 +149,6 @@ The library supports secure transfer of meta.json configuration between client (
    - Backs up existing meta.json
    - Replaces with new content
    - Updates BLE configuration
-
-The transfer protocol includes error handling for:
-- Sequence validation
-- Timeout detection
-- Connection loss
-- JSON structure validation
-- Incomplete transfers
 
 ## License
 This library is open-source and available under the MIT license.
