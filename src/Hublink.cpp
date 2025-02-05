@@ -896,8 +896,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
 
             advertise_for = originalConnectFor;
 
-            Serial.printf("Done advertising. Connection %s.\n",
-                          connectionSuccess ? "successful" : "failed");
+            Serial.println("Hublink ended advertising.");
             lastHublinkMillis = millis();
         }
         else
