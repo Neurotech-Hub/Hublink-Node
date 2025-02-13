@@ -16,7 +16,8 @@ Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency)
       currentFileName(""),
       allFilesSent(false),
       watchdogTimer(0),
-      sendFilenames(false)
+      sendFilenames(false),
+      metaDoc(META_DOC_SIZE) // Initialize with capacity
 {
     g_hublink = this; // Set the global pointer
 }
@@ -163,7 +164,18 @@ String Hublink::readMetaJson()
         return "";
     }
 
-    StaticJsonDocument<512> doc;
+    // Get file size for capacity planning
+    size_t fileSize = configFile.size();
+    size_t capacity = fileSize * 2; // JSON parsing needs extra space
+    if (capacity < 2048)
+        capacity = 2048; // Minimum size
+    if (capacity > 16384)
+    { // Set reasonable maximum
+        Serial.println("Warning: meta.json file too large");
+        return "";
+    }
+
+    DynamicJsonDocument doc(capacity);
     DeserializationError error = deserializeJson(doc, configFile);
     configFile.close();
 
@@ -171,26 +183,44 @@ String Hublink::readMetaJson()
     {
         Serial.print("Failed to parse meta.json: ");
         Serial.println(error.c_str());
+        metaDocValid = false;
+        return "";
+    }
+
+    try
+    {
+        metaDoc = doc; // Copy with error checking
+        metaDocValid = true;
+    }
+    catch (...)
+    {
+        Serial.println("Failed to store meta.json document");
+        metaDocValid = false;
+        return "";
+    }
+
+    // Validate JSON structure before proceeding
+    if (!doc.containsKey("hublink"))
+    {
+        Serial.println("Error: Missing 'hublink' object in meta.json");
         return "";
     }
 
     JsonObject hublink = doc["hublink"];
     String content = "";
 
-    // Parse configuration
+    // Validate fields before access
     if (hublink.containsKey("advertise"))
     {
         advertise = hublink["advertise"].as<String>();
     }
 
-    // Handle upload path and append path
     if (hublink.containsKey("upload_path"))
     {
         String path = hublink["upload_path"].as<String>();
-        if (path.length() > 0)
+        if (path.length() > 0 && path.length() <= 128)
         {
             upload_path = path;
-            // Ensure path starts with /
             if (!upload_path.startsWith("/"))
             {
                 upload_path = "/" + upload_path;
@@ -256,11 +286,8 @@ String Hublink::readMetaJson()
         Serial.printf("BLE disable flag set to: %s\n", disable ? "true" : "false");
     }
 
-    // Create JSON for upload_path
-    StaticJsonDocument<128> pathDoc;
-    pathDoc["upload_path"] = upload_path;
-    upload_path_json = "";
-    serializeJson(pathDoc, upload_path_json);
+    // Simplify upload_path JSON creation
+    upload_path_json = "{\"upload_path\":\"" + upload_path + "\"}";
     Serial.printf("Encoded upload path JSON: %s\n", upload_path_json.c_str());
 
     return content;
@@ -570,6 +597,16 @@ void Hublink::resetBLEState()
     {
         tempMetaJsonFile.close();
     }
+
+    // Clear meta.json state
+    if (metaJsonTransferInProgress)
+    {
+        cleanupMetaJsonTransfer();
+    }
+
+    // Clear the dynamic document
+    metaDoc.clear();
+    metaDocValid = false;
 }
 
 void Hublink::updateMtuSize()
@@ -1234,6 +1271,10 @@ void Hublink::cleanupMetaJsonTransfer()
     lastMetaJsonId = 0;
     metaJsonLastChunkTime = 0;
 
+    // Clear the document
+    metaDoc.clear();
+    metaDocValid = false;
+
     // Clear the temporary path
     tempMetaJsonPath = "";
 }
@@ -1318,4 +1359,20 @@ void Hublink::handleMetaJsonChunk(uint32_t id, const String &data)
         Serial.println("Failed to process chunk");
         cleanupMetaJsonTransfer();
     }
+}
+
+bool Hublink::hasMetaKey(const char *parent, const char *child)
+{
+    if (!metaDocValid)
+    {
+        readMetaJson();
+    }
+
+    if (!metaDoc.containsKey(parent))
+    {
+        return false;
+    }
+
+    JsonObject parentObj = metaDoc[parent];
+    return parentObj.containsKey(child);
 }

@@ -26,6 +26,27 @@ void setup()
     if (hublink.begin())
     {
         Serial.println("✓ Hublink.");
+
+        // Example of reading meta.json values safely
+        if (hublink.hasMetaKey("subject", "id"))
+        {
+            String subjectId = hublink.getMeta<String>("subject", "id");
+            Serial.printf("Subject ID: %s\n", subjectId.c_str());
+        }
+
+        // Example of reading boolean value
+        if (hublink.hasMetaKey("subject", "doFoo"))
+        {
+            bool doFoo = hublink.getMeta<bool>("subject", "doFoo");
+            Serial.printf("doFoo enabled: %s\n", doFoo ? "true" : "false");
+        }
+
+        // Example of reading integer value
+        if (hublink.hasMetaKey("subject", "age"))
+        {
+            int age = hublink.getMeta<int>("subject", "age");
+            Serial.printf("Subject age: %d\n", age);
+        }
     }
     else
     {

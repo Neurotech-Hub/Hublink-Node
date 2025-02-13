@@ -110,6 +110,58 @@ public:
     uint8_t reconnect_attempts = DEFAULT_RECONNECT_ATTEMPTS;
     uint32_t reconnect_every = DEFAULT_RECONNECT_EVERY;
 
+    /**
+     * Check if a key exists in meta.json
+     *
+     * Example usage:
+     * if (hublink.hasMetaKey("subject", "doFoo")) {
+     *     bool doFoo = hublink.getMeta<bool>("subject", "doFoo");
+     * }
+     *
+     * @param parent Parent key in meta.json
+     * @param child Child key under parent
+     * @return true if both parent and child keys exist
+     */
+    bool hasMetaKey(const char *parent, const char *child);
+
+    /**
+     * Get meta.json value by parent and child keys with type conversion
+     *
+     * Example usage:
+     * bool doFoo = hublink.getMeta<bool>("subject", "doFoo");
+     * String id = hublink.getMeta<String>("subject", "id");
+     * int value = hublink.getMeta<int>("subject", "count");
+     *
+     * Testing for missing values:
+     * String id = hublink.getMeta<String>("subject", "id");
+     * if (id.isEmpty()) {
+     *     Serial.println("ID not found");
+     * }
+     */
+    template <typename T>
+    T getMeta(const char *parent, const char *child)
+    {
+        if (!metaDocValid)
+        {
+            readMetaJson();
+        }
+
+        if (!metaDoc.containsKey(parent))
+        {
+            Serial.printf("Warning: Parent key '%s' not found in meta.json\n", parent);
+            return T();
+        }
+
+        JsonObject parentObj = metaDoc[parent];
+        if (!parentObj.containsKey(child))
+        {
+            Serial.printf("Warning: Child key '%s' not found under '%s'\n", child, parent);
+            return T();
+        }
+
+        return parentObj[child].as<T>();
+    }
+
 protected:
     // BLE characteristics
     NimBLECharacteristic *pFilenameCharacteristic;
@@ -209,6 +261,11 @@ protected:
     File transferFile;
     bool rootFileOpen = false;
     bool transferFileOpen = false;
+
+    // Add document as protected member for getMeta access
+    DynamicJsonDocument metaDoc;
+    static const size_t META_DOC_SIZE = 2048; // Add constant for size
+    bool metaDocValid = false;
 };
 
 // Global pointer declaration
