@@ -313,20 +313,24 @@ public:
         {
             // Handle timestamp
             String timestamp = g_hublink->parseGateway(pCharacteristic, "timestamp");
+            Serial.println("Timestamp: " + timestamp);
             if (timestamp.length() > 0)
             {
                 g_hublink->handleTimestamp(timestamp);
+                Serial.println("Timestamp callback complete.");
             }
 
             // Handle sendFilenames flag
             String sendFilenames = g_hublink->parseGateway(pCharacteristic, "sendFilenames");
             g_hublink->sendFilenames = (sendFilenames == "true");
+            Serial.println("Send filenames callback complete.");
 
             // Handle watchdogTimeoutMs
             String watchdogTimeout = g_hublink->parseGateway(pCharacteristic, "watchdogTimeoutMs");
             if (watchdogTimeout.length() > 0)
             {
                 g_hublink->watchdogTimeoutMs = watchdogTimeout.toInt();
+                Serial.println("Watchdog timeout callback complete.");
             }
 
             // Handle meta.json transfer
@@ -338,10 +342,10 @@ public:
                 // Block other operations during meta.json transfer
                 g_hublink->sendFilenames = false;
                 g_hublink->currentFileName = "";
-
                 g_hublink->handleMetaJsonChunk(metaJsonId.toInt(), metaJsonData);
             }
         }
+        Serial.println("Gateway callback complete.");
     }
 };
 

@@ -424,12 +424,12 @@ void Hublink::sendAvailableFilenames()
         File entry = rootFile.openNextFile();
         if (!entry)
         {
-            Serial.println("All filenames sent.");
             int index = 0;
             while (index < accumulatedFileInfo.length() && deviceConnected)
             {
                 watchdogTimer = millis();
                 String chunk = accumulatedFileInfo.substring(index, index + mtuSize);
+                Serial.println("Indicating filename chunk: " + chunk);
                 if (!sendIndication(pFilenameCharacteristic, (uint8_t *)chunk.c_str(), chunk.length()))
                 {
                     Serial.println("Failed to send indication");
@@ -450,7 +450,6 @@ void Hublink::sendAvailableFilenames()
         String fileName = entry.name();
         if (isValidFile(fileName))
         {
-            Serial.println(fileName);
             String fileInfo = fileName + "|" + String(entry.size());
             if (!accumulatedFileInfo.isEmpty())
             {
@@ -617,16 +616,23 @@ void Hublink::updateMtuSize()
 
 String Hublink::parseGateway(NimBLECharacteristic *pCharacteristic, const String &key)
 {
-    std::string value = pCharacteristic->getValue().c_str();
-    if (value.empty())
+    static DynamicJsonDocument doc(1024); // Reuse document
+    doc.clear();                          // Clear previous contents
+
+    if (!pCharacteristic)
+    {
+        Serial.println("Warning: Null characteristic in parseGateway");
+        return "";
+    }
+
+    std::string rawValue = pCharacteristic->getValue();
+    if (rawValue.empty())
     {
         Serial.println("Config: None");
         return "";
     }
 
-    String configStr = String(value.c_str());
-    StaticJsonDocument<512> doc;
-    DeserializationError error = deserializeJson(doc, configStr);
+    DeserializationError error = deserializeJson(doc, rawValue.c_str());
 
     if (error)
     {
@@ -640,16 +646,22 @@ String Hublink::parseGateway(NimBLECharacteristic *pCharacteristic, const String
         return "";
     }
 
-    // Only print the config if the key was found
-    Serial.println("Config: Parsing JSON: " + configStr);
+    // Only print if parsing succeeded
+    Serial.println("Config: Parsing JSON: " + String(rawValue.c_str()));
 
-    // Handle boolean values specifically
+    // Always convert to string, handling all types
     if (doc[key].is<bool>())
     {
         return doc[key].as<bool>() ? "true" : "false";
     }
-
-    return doc[key].as<String>();
+    else if (doc[key].is<int>() || doc[key].is<long>())
+    {
+        return String(doc[key].as<long>());
+    }
+    else
+    {
+        return doc[key].as<String>();
+    }
 }
 
 void Hublink::sleep(uint64_t seconds)
