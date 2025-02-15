@@ -27,7 +27,7 @@ bool Hublink::begin(String advName)
     // Set CPU frequency to minimum required for radio operation
     setCPUFrequency(CPUFrequency::MHz_80);
 
-    // 2. Initialize SD
+    // Initialize SD
     if (!beginSD())
     {
         Serial.println("✗ SD Card.");
@@ -46,7 +46,7 @@ bool Hublink::begin(String advName)
     reconnect_attempts = DEFAULT_RECONNECT_ATTEMPTS;
     reconnect_every = DEFAULT_RECONNECT_EVERY;
 
-    // 3. Read meta.json: set advertising name, subject id
+    // Read meta.json, store in doc, set hublink variables
     readMetaJson();
 
     lastHublinkMillis = millis();
@@ -405,7 +405,12 @@ void Hublink::cleanupCallbacks()
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
 bool Hublink::beginSD()
 {
-    return SD.begin(cs, SPI, clkFreq);
+    if (SD.begin(cs, SPI, clkFreq))
+    {
+        SD.exists("/x.txt"); // trick to enter SD idle state
+        return true;
+    }
+    return false;
 }
 
 void Hublink::sendAvailableFilenames()
