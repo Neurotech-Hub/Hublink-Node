@@ -31,10 +31,8 @@ hublink.sleep(5);
 ```
 
 ## Installation
-1. Download the library from the [GitHub repository](https://github.com/Neurotech-Hub/HublinkNode).
-2. Place the `HublinkNode` folder into your Arduino libraries directory.
-3. Restart the Arduino IDE if it is already open.
-4. Install the dependencies from Arduino IDE:
+1. Download the Hublink-Node library in Arduino IDE. Alternatively (but not recommended), clone the [GitHub repository](https://github.com/Neurotech-Hub/HublinkNode).
+4. Ensure the dependencies are installed from Arduino IDE:
    - NimBLE-Arduino
    - ArduinoJson
 
