@@ -93,3 +93,4 @@ libraries/*/extras/
 libraries/*/test/
 
 # Node.js depe
+.library.properties

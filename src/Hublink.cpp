@@ -24,12 +24,35 @@ Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency)
 
 bool Hublink::begin(String advName)
 {
+    if (doDebug)
+    {
+        Serial1.begin(115200);
+    }
+    debug(DebugByte::HUBLINK_BEGIN_FUNC);
+
+    // Get and send wake-up reason
+    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+    switch (wakeup_reason)
+    {
+    case ESP_SLEEP_WAKEUP_TIMER:
+        debug(DebugByte::HUBLINK_WAKE_TIMER);
+        break;
+    case ESP_SLEEP_WAKEUP_UNDEFINED:
+    case ESP_SLEEP_WAKEUP_ALL:
+        debug(DebugByte::HUBLINK_WAKE_RESET);
+        break;
+    default:
+        debug(DebugByte::HUBLINK_WAKE_OTHER);
+        break;
+    }
+
     // Set CPU frequency to minimum required for radio operation
     setCPUFrequency(CPUFrequency::MHz_80);
 
     // Initialize SD
     if (!beginSD())
     {
+        debug(DebugByte::HUBLINK_SD_BEGIN_ERROR);
         Serial.println("✗ SD Card.");
         return false;
     }
@@ -47,9 +70,11 @@ bool Hublink::begin(String advName)
     reconnect_every = DEFAULT_RECONNECT_EVERY;
 
     // Read meta.json, store in doc, set hublink variables
+    debug(DebugByte::HUBLINK_META_JSON_READ);
     readMetaJson();
 
     lastHublinkMillis = millis();
+    debug(DebugByte::HUBLINK_END_FUNC);
     return true;
 }
 
@@ -408,8 +433,10 @@ bool Hublink::beginSD()
     if (SD.begin(cs, SPI, clkFreq))
     {
         SD.exists("/x.txt"); // trick to enter SD idle state
+        debug(DebugByte::HUBLINK_SD_CONNECT);
         return true;
     }
+    debug(DebugByte::HUBLINK_SD_ERROR);
     return false;
 }
 
@@ -679,15 +706,18 @@ void Hublink::sleep(uint64_t seconds)
 
 bool Hublink::doBLE()
 {
+    debug(DebugByte::HUBLINK_BEGIN_FUNC);
     bool successfulTransfer = false;
 
     // Add cleanup before early returns
     if (!beginSD())
     {
-        cleanupCallbacks(); // Add here
+        debug(DebugByte::HUBLINK_SD_BEGIN_ERROR);
+        cleanupCallbacks();
         return false;
     }
 
+    debug(DebugByte::HUBLINK_BLE_ADV_START);
     startAdvertising();
     unsigned long subLoopStartTime = millis();
 
@@ -697,12 +727,15 @@ bool Hublink::doBLE()
         // Watchdog timer
         if (deviceConnected && (millis() - watchdogTimer > watchdogTimeoutMs))
         {
+            debug(DebugByte::HUBLINK_TRANSFER_TIMEOUT);
             Serial.println("Hublink node timeout detected, disconnecting...");
 
             // Cleanup any in-progress transfers first
             if (metaJsonTransferInProgress)
             {
+                debug(DebugByte::HUBLINK_CLEANUP_START);
                 cleanupMetaJsonTransfer();
+                debug(DebugByte::HUBLINK_CLEANUP_COMPLETE);
             }
 
             // Close files before disconnecting
@@ -748,6 +781,7 @@ bool Hublink::doBLE()
             }
             else
             {
+                debug(DebugByte::HUBLINK_FILE_OPEN_ERROR);
                 Serial.println("Failed to open file for transfer");
             }
 
@@ -784,6 +818,7 @@ bool Hublink::doBLE()
             }
             else
             {
+                debug(DebugByte::HUBLINK_SD_ROOT_ERROR);
                 Serial.println("Failed to open root directory");
             }
 
@@ -797,6 +832,7 @@ bool Hublink::doBLE()
 
         if (deviceConnected && allFilesSent)
         {
+            debug(DebugByte::HUBLINK_TRANSFER_SUCCESS);
             successfulTransfer = true;
         }
 
@@ -805,6 +841,7 @@ bool Hublink::doBLE()
     }
 
     // Final cleanup of any remaining open handles
+    debug(DebugByte::HUBLINK_CLEANUP_START);
     if (rootFileOpen)
     {
         rootFile.close();
@@ -816,10 +853,12 @@ bool Hublink::doBLE()
         transferFileOpen = false;
     }
 
+    debug(DebugByte::HUBLINK_BLE_ADV_STOP);
     stopAdvertising();
 
     if (metaJsonUpdated)
     {
+        debug(DebugByte::HUBLINK_META_JSON_READ);
         readMetaJson(); // update any new meta.json values
     }
     metaJsonUpdated = false;
@@ -827,8 +866,10 @@ bool Hublink::doBLE()
     // Ensure cleanup before final return
     if (!successfulTransfer)
     {
-        cleanupCallbacks(); // Add here
+        debug(DebugByte::HUBLINK_TRANSFER_FAIL);
+        cleanupCallbacks();
     }
+    debug(DebugByte::HUBLINK_END_FUNC);
     return successfulTransfer;
 }
 
@@ -842,6 +883,7 @@ bool Hublink::doBLE()
  */
 bool Hublink::sync(uint32_t temporaryConnectFor)
 {
+    debug(DebugByte::HUBLINK_BLE_SYNC_START);
     uint32_t currentTime = millis();
     bool connectionSuccess = false;
 
@@ -860,6 +902,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
     // Add safety cleanup at start
     if (!deviceConnected && metaJsonTransferInProgress)
     {
+        debug(DebugByte::HUBLINK_CLEANUP_START);
         if (rootFileOpen)
         {
             rootFile.close();
@@ -872,12 +915,14 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
         }
         cleanupCallbacks();
         cleanupMetaJsonTransfer();
+        debug(DebugByte::HUBLINK_CLEANUP_COMPLETE);
     }
 
     // Add cleanup for early exit conditions
     if (disable || (temporaryConnectFor == 0 && (currentTime - lastHublinkMillis < advertise_every * 1000)))
     {
         cleanupCallbacks();
+        debug(DebugByte::HUBLINK_BLE_SYNC_END);
         return false;
     }
 
@@ -895,10 +940,12 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
 
         if (connectionAttempted && currentRetryAttempt >= reconnect_attempts)
         {
+            debug(DebugByte::HUBLINK_WARNING);
             // Serial.println("Max retries reached, resetting retry state");
             connectionAttempted = false;
             currentRetryAttempt = 0;
             lastHublinkMillis = currentTime;
+            debug(DebugByte::HUBLINK_BLE_SYNC_END);
             return false;
         }
 
@@ -919,6 +966,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
 
             if (!connectionSuccess && try_reconnect && temporaryConnectFor == 0) // Only retry if not temporary
             {
+                debug(DebugByte::HUBLINK_WARNING);
                 if (!connectionAttempted)
                 {
                     connectionAttempted = true;
@@ -938,10 +986,12 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
             {
                 if (connectionSuccess)
                 {
+                    debug(DebugByte::HUBLINK_TRANSFER_SUCCESS);
                     Serial.println("Connection successful, resetting retry state");
                 }
                 else if (!try_reconnect || temporaryConnectFor > 0)
                 {
+                    debug(DebugByte::HUBLINK_TRANSFER_FAIL);
                     Serial.println("Retries disabled, not attempting reconnection");
                 }
                 connectionAttempted = false;
@@ -974,10 +1024,13 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
 
     if (!connectionSuccess && metaJsonTransferInProgress)
     {
+        debug(DebugByte::HUBLINK_CLEANUP_START);
         // Ensure cleanup if connection attempt failed
         cleanupMetaJsonTransfer();
+        debug(DebugByte::HUBLINK_CLEANUP_COMPLETE);
     }
 
+    debug(DebugByte::HUBLINK_BLE_SYNC_END);
     return connectionSuccess;
 }
 
@@ -1392,4 +1445,14 @@ bool Hublink::hasMetaKey(const char *parent, const char *child)
 
     JsonObject parentObj = metaDoc[parent];
     return parentObj.containsKey(child);
+}
+
+void Hublink::debug(DebugByte byte)
+{
+    if (doDebug)
+    {
+        Serial.printf("Debug: 0x%02X\n", static_cast<uint8_t>(byte));
+        Serial1.write(static_cast<uint8_t>(byte));
+        Serial1.write('\n'); // Add newline for our line-based detection
+    }
 }

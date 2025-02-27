@@ -37,6 +37,67 @@ enum class CPUFrequency : uint32_t
     MHz_240 = 240  // Maximum frequency
 };
 
+// Debug byte map for Serial1 debugging
+enum DebugByte : uint8_t
+{
+    HUBLINK_DEBUG_BYTE_START, // 0x00, not used
+    // Core function events
+    HUBLINK_BEGIN_FUNC, // 0x01
+    HUBLINK_END_FUNC,   // 0x02
+
+    // Status levels
+    HUBLINK_ERROR,   // 0x03 (Generic - should not be used directly)
+    HUBLINK_WARNING, // 0x04
+    HUBLINK_INFO,    // 0x05
+
+    // BLE events
+    HUBLINK_BLE_CONNECT,    // 0x06
+    HUBLINK_BLE_DISCONNECT, // 0x07
+    HUBLINK_BLE_ERROR,      // 0x08
+    HUBLINK_BLE_ADV_START,  // 0x09
+    HUBLINK_BLE_ADV_STOP,   // 0x0A
+    HUBLINK_BLE_SYNC_START, // 0x0B
+    HUBLINK_BLE_SYNC_END,   // 0x0C
+
+    // File operations
+    HUBLINK_FILE_OPEN,       // 0x0D
+    HUBLINK_FILE_CLOSE,      // 0x0E
+    HUBLINK_FILE_WRITE,      // 0x0F
+    HUBLINK_FILE_READ,       // 0x10
+    HUBLINK_FILE_OPEN_ERROR, // 0x11
+
+    // SD card events
+    HUBLINK_SD_CONNECT,     // 0x12
+    HUBLINK_SD_ERROR,       // 0x13
+    HUBLINK_SD_BEGIN_ERROR, // 0x14
+    HUBLINK_SD_ROOT_ERROR,  // 0x15
+
+    // Meta JSON events
+    HUBLINK_META_JSON_UPDATE,      // 0x16
+    HUBLINK_META_JSON_READ,        // 0x17
+    HUBLINK_META_JSON_READ_ERROR,  // 0x18
+    HUBLINK_META_JSON_PARSE_ERROR, // 0x19
+
+    // Sleep events
+    HUBLINK_SLEEP_ENTER, // 0x1A
+    HUBLINK_SLEEP_EXIT,  // 0x1B
+
+    // Wake-up reason codes
+    HUBLINK_WAKE_RESET, // 0x1C
+    HUBLINK_WAKE_TIMER, // 0x1D
+    HUBLINK_WAKE_OTHER, // 0x1E
+
+    // Cleanup events
+    HUBLINK_CLEANUP_START,    // 0x1F
+    HUBLINK_CLEANUP_COMPLETE, // 0x20
+
+    // Transfer events
+    HUBLINK_TRANSFER_SUCCESS,    // 0x21
+    HUBLINK_TRANSFER_FAIL,       // 0x22
+    HUBLINK_TRANSFER_TIMEOUT,    // 0x23
+    HUBLINK_TRANSFER_WRITE_ERROR // 0x24
+};
+
 // Forward declare callback classes
 class HublinkServerCallbacks;
 class HublinkFilenameCallbacks;
@@ -51,6 +112,8 @@ class Hublink
 public:
     // Constructor & core functions
     Hublink(uint8_t chipSelect = SS, uint32_t clockFrequency = 1000000);
+    bool doDebug = false;
+    void debug(DebugByte byte);
 
     // BLE control
     bool begin(String advName = "HUBLINK");
@@ -96,8 +159,6 @@ public:
     void clearValidExtensions();
     void addValidExtensions(const std::vector<String> &extensions);
     const std::vector<String> &getValidExtensions() const;
-
-    // Add new public methods
     void handleMetaJsonChunk(uint32_t id, const String &data);
 
     // BLE configuration (initialized with defaults)
