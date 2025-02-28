@@ -325,48 +325,48 @@ void Hublink::setCPUFrequency(CPUFrequency freq_mhz)
 
 void Hublink::startAdvertising()
 {
+    debug(DebugByte::HUBLINK_BLE_INIT_START);
     NimBLEDevice::init(advertise.c_str());
 
-    // Set TX power before creating server
-    // Options:
-    // ESP_PWR_LVL_N12 (-12dBm)
-    // ESP_PWR_LVL_N9  (-9dBm)
-    // ESP_PWR_LVL_N6  (-6dBm)
-    // ESP_PWR_LVL_N3  (-3dBm)
-    // ESP_PWR_LVL_N0  (0dBm)
-    // ESP_PWR_LVL_P3  (+3dBm)
-    // ESP_PWR_LVL_P6  (+6dBm)
-    // ESP_PWR_LVL_P9  (+9dBm)
-    NimBLEDevice::setPower(ESP_PWR_LVL_P9); // Maximum power for best performance
+    debug(DebugByte::HUBLINK_BLE_INIT_POWER);
+    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
 
+    debug(DebugByte::HUBLINK_BLE_CREATE_SERVER);
     pServer = NimBLEDevice::createServer();
 
     if (!pServer)
     {
+        debug(DebugByte::HUBLINK_BLE_ERROR);
         Serial.println("Failed to create server!");
         cleanupCallbacks();
         return;
     }
 
-    // Set callbacks using static instances
     pServer->setCallbacks(&serverCallbacks);
 
+    debug(DebugByte::HUBLINK_BLE_CREATE_SERVICE);
     pService = pServer->createService(SERVICE_UUID);
 
+    debug(DebugByte::HUBLINK_BLE_CREATE_CHARS);
+
+    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_FILENAME);
     pFilenameCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_FILENAME,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE);
     pFilenameCharacteristic->setCallbacks(&filenameCallbacks);
 
+    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_TRANSFER);
     pFileTransferCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_FILETRANSFER,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::INDICATE);
 
+    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_CONFIG);
     pConfigCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_GATEWAY,
         NIMBLE_PROPERTY::WRITE);
-    pConfigCharacteristic->setCallbacks(&gatewayCallbacks); // Set characteristic callback
+    pConfigCharacteristic->setCallbacks(&gatewayCallbacks);
 
+    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_NODE);
     pNodeCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_NODE,
         NIMBLE_PROPERTY::READ);
@@ -374,13 +374,21 @@ void Hublink::startAdvertising()
     pNodeCharacteristic->setValue(upload_path_json.c_str());
     Serial.printf("Node characteristic value: %s\n", upload_path_json.c_str());
 
+    debug(DebugByte::HUBLINK_BLE_START_SERVICE);
     pService->start();
 
+    debug(DebugByte::HUBLINK_BLE_ADV_CONFIG);
     NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
+
+    debug(DebugByte::HUBLINK_BLE_ADV_SET_UUID);
     pAdvertising->addServiceUUID(SERVICE_UUID);
+
+    debug(DebugByte::HUBLINK_BLE_ADV_SET_NAME);
     NimBLEAdvertisementData scanResponse;
     scanResponse.setName(advertise.c_str());
     pAdvertising->setScanResponseData(scanResponse);
+
+    debug(DebugByte::HUBLINK_BLE_ADV_START);
     pAdvertising->start();
 }
 
@@ -442,7 +450,6 @@ bool Hublink::beginSD()
 
 void Hublink::sendAvailableFilenames()
 {
-    // Check if root directory is valid
     if (!rootFileOpen)
     {
         Serial.println("Invalid root directory handle");
@@ -453,6 +460,7 @@ void Hublink::sendAvailableFilenames()
     while (deviceConnected)
     {
         watchdogTimer = millis();
+        debug(DebugByte::HUBLINK_FILE_ENTRY_OPEN);
         File entry = rootFile.openNextFile();
         if (!entry)
         {
@@ -464,6 +472,7 @@ void Hublink::sendAvailableFilenames()
                 Serial.println("Indicating filename chunk: " + chunk);
                 if (!sendIndication(pFilenameCharacteristic, (uint8_t *)chunk.c_str(), chunk.length()))
                 {
+                    debug(DebugByte::HUBLINK_TRANSFER_INDICATION_FAIL);
                     Serial.println("Failed to send indication");
                     break;
                 }
@@ -472,24 +481,30 @@ void Hublink::sendAvailableFilenames()
             // Send "EOF" as a separate indication to signal the end
             if (!sendIndication(pFilenameCharacteristic, (uint8_t *)"EOF", 3))
             {
+                debug(DebugByte::HUBLINK_TRANSFER_INDICATION_FAIL);
                 Serial.println("Failed to send EOF indication");
+            }
+            else
+            {
+                debug(DebugByte::HUBLINK_TRANSFER_EOF_SENT);
             }
             allFilesSent = true;
             accumulatedFileInfo = ""; // Clear the accumulated string
             break;
         }
 
+        debug(DebugByte::HUBLINK_FILE_ENTRY_PROCESS);
         String fileName = entry.name();
         if (isValidFile(fileName))
         {
             String fileInfo = fileName + "|" + String(entry.size());
             if (!accumulatedFileInfo.isEmpty())
             {
-                accumulatedFileInfo += ";"; // Separate entries with a semicolon
+                accumulatedFileInfo += ";";
             }
             accumulatedFileInfo += fileInfo;
         }
-        entry.close(); // Ensure each entry is closed after use
+        entry.close();
     }
 }
 
@@ -741,11 +756,13 @@ bool Hublink::doBLE()
             // Close files before disconnecting
             if (rootFileOpen)
             {
+                debug(DebugByte::HUBLINK_FILE_CLOSE);
                 rootFile.close();
                 rootFileOpen = false;
             }
             if (transferFileOpen)
             {
+                debug(DebugByte::HUBLINK_FILE_CLOSE);
                 transferFile.close();
                 transferFileOpen = false;
             }
@@ -762,17 +779,20 @@ bool Hublink::doBLE()
         // Handle file transfers when connected
         if (deviceConnected && !currentFileName.isEmpty())
         {
+            debug(DebugByte::HUBLINK_TRANSFER_START);
             Serial.print("Requested file: ");
             Serial.println(currentFileName);
 
             // Close any previously open transfer file
             if (transferFileOpen)
             {
+                debug(DebugByte::HUBLINK_FILE_CLOSE);
                 transferFile.close();
                 transferFileOpen = false;
             }
 
             // Open new file and check if successful
+            debug(DebugByte::HUBLINK_FILE_OPEN);
             transferFile = SD.open("/" + currentFileName);
             if (transferFile)
             {
@@ -788,6 +808,7 @@ bool Hublink::doBLE()
             // Clean up after transfer
             if (transferFileOpen)
             {
+                debug(DebugByte::HUBLINK_FILE_CLOSE);
                 transferFile.close();
                 transferFileOpen = false;
             }
@@ -797,6 +818,7 @@ bool Hublink::doBLE()
         // once sendFilenames is true
         if (deviceConnected && currentFileName.isEmpty() && !allFilesSent && sendFilenames)
         {
+            debug(DebugByte::HUBLINK_FILE_LIST_START);
             updateMtuSize();
             Serial.print("MTU Size (negotiated): ");
             Serial.println(mtuSize);
@@ -805,11 +827,13 @@ bool Hublink::doBLE()
             // Close any previously open root directory
             if (rootFileOpen)
             {
+                debug(DebugByte::HUBLINK_FILE_CLOSE);
                 rootFile.close();
                 rootFileOpen = false;
             }
 
             // Open root directory and check if successful
+            debug(DebugByte::HUBLINK_FILE_OPEN);
             rootFile = SD.open("/");
             if (rootFile)
             {
@@ -825,9 +849,11 @@ bool Hublink::doBLE()
             // Clean up after sending filenames
             if (rootFileOpen)
             {
+                debug(DebugByte::HUBLINK_FILE_CLOSE);
                 rootFile.close();
                 rootFileOpen = false;
             }
+            debug(DebugByte::HUBLINK_FILE_LIST_END);
         }
 
         if (deviceConnected && allFilesSent)
@@ -844,11 +870,13 @@ bool Hublink::doBLE()
     debug(DebugByte::HUBLINK_CLEANUP_START);
     if (rootFileOpen)
     {
+        debug(DebugByte::HUBLINK_FILE_CLOSE);
         rootFile.close();
         rootFileOpen = false;
     }
     if (transferFileOpen)
     {
+        debug(DebugByte::HUBLINK_FILE_CLOSE);
         transferFile.close();
         transferFileOpen = false;
     }
