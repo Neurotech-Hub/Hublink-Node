@@ -325,13 +325,13 @@ void Hublink::setCPUFrequency(CPUFrequency freq_mhz)
 
 void Hublink::startAdvertising()
 {
-    debug(DebugByte::HUBLINK_BLE_INIT_START);
+    debug(DebugByte::HUBLINK_BLE_INIT_START, true);
     NimBLEDevice::init(advertise.c_str());
 
-    debug(DebugByte::HUBLINK_BLE_INIT_POWER);
+    debug(DebugByte::HUBLINK_BLE_INIT_POWER, true);
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
 
-    debug(DebugByte::HUBLINK_BLE_CREATE_SERVER);
+    debug(DebugByte::HUBLINK_BLE_CREATE_SERVER, true);
     pServer = NimBLEDevice::createServer();
 
     if (!pServer)
@@ -344,29 +344,29 @@ void Hublink::startAdvertising()
 
     pServer->setCallbacks(&serverCallbacks);
 
-    debug(DebugByte::HUBLINK_BLE_CREATE_SERVICE);
+    debug(DebugByte::HUBLINK_BLE_CREATE_SERVICE, true);
     pService = pServer->createService(SERVICE_UUID);
 
-    debug(DebugByte::HUBLINK_BLE_CREATE_CHARS);
+    debug(DebugByte::HUBLINK_BLE_CREATE_CHARS, true);
 
-    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_FILENAME);
+    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_FILENAME, true);
     pFilenameCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_FILENAME,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE);
     pFilenameCharacteristic->setCallbacks(&filenameCallbacks);
 
-    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_TRANSFER);
+    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_TRANSFER, true);
     pFileTransferCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_FILETRANSFER,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::INDICATE);
 
-    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_CONFIG);
+    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_CONFIG, true);
     pConfigCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_GATEWAY,
         NIMBLE_PROPERTY::WRITE);
     pConfigCharacteristic->setCallbacks(&gatewayCallbacks);
 
-    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_NODE);
+    debug(DebugByte::HUBLINK_BLE_CREATE_CHAR_NODE, true);
     pNodeCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_NODE,
         NIMBLE_PROPERTY::READ);
@@ -374,21 +374,21 @@ void Hublink::startAdvertising()
     pNodeCharacteristic->setValue(upload_path_json.c_str());
     Serial.printf("Node characteristic value: %s\n", upload_path_json.c_str());
 
-    debug(DebugByte::HUBLINK_BLE_START_SERVICE);
+    debug(DebugByte::HUBLINK_BLE_START_SERVICE, true);
     pService->start();
 
-    debug(DebugByte::HUBLINK_BLE_ADV_CONFIG);
+    debug(DebugByte::HUBLINK_BLE_ADV_CONFIG, true);
     NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
 
-    debug(DebugByte::HUBLINK_BLE_ADV_SET_UUID);
+    debug(DebugByte::HUBLINK_BLE_ADV_SET_UUID, true);
     pAdvertising->addServiceUUID(SERVICE_UUID);
 
-    debug(DebugByte::HUBLINK_BLE_ADV_SET_NAME);
+    debug(DebugByte::HUBLINK_BLE_ADV_SET_NAME, true);
     NimBLEAdvertisementData scanResponse;
     scanResponse.setName(advertise.c_str());
     pAdvertising->setScanResponseData(scanResponse);
 
-    debug(DebugByte::HUBLINK_BLE_ADV_START);
+    debug(DebugByte::HUBLINK_BLE_ADV_START, true);
     pAdvertising->start();
 }
 
@@ -943,7 +943,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
         }
         cleanupCallbacks();
         cleanupMetaJsonTransfer();
-        debug(DebugByte::HUBLINK_CLEANUP_COMPLETE);
+        debug(DebugByte::HUBLINK_CLEANUP_COMPLETE, true);
     }
 
     // Add cleanup for early exit conditions
@@ -1058,7 +1058,7 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
         debug(DebugByte::HUBLINK_CLEANUP_COMPLETE);
     }
 
-    debug(DebugByte::HUBLINK_BLE_SYNC_END);
+    debug(DebugByte::HUBLINK_BLE_SYNC_END, true);
     return connectionSuccess;
 }
 
@@ -1475,12 +1475,19 @@ bool Hublink::hasMetaKey(const char *parent, const char *child)
     return parentObj.containsKey(child);
 }
 
-void Hublink::debug(DebugByte byte)
+void Hublink::debug(DebugByte byte, bool doDelay)
 {
     if (doDebug)
     {
         Serial.printf("Debug: 0x%02X\n", static_cast<uint8_t>(byte));
         Serial1.write(static_cast<uint8_t>(byte));
         Serial1.write('\n'); // Add newline for our line-based detection
+    }
+    else
+    {
+        if (doDelay)
+        {
+            delay(1);
+        }
     }
 }

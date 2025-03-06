@@ -142,7 +142,7 @@ public:
     // Constructor & core functions
     Hublink(uint8_t chipSelect = SS, uint32_t clockFrequency = 1000000);
     bool doDebug = false;
-    void debug(DebugByte byte);
+    void debug(DebugByte byte, bool doDelay = true);
 
     // BLE control
     bool begin(String advName = "HUBLINK");
