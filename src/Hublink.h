@@ -13,6 +13,7 @@
 #include <vector>
 #include <string>
 #include <atomic>
+#include "RTCManager.h"
 
 // BLE UUIDs
 #define SERVICE_UUID "57617368-5501-0001-8000-00805f9b34fb"
@@ -356,6 +357,14 @@ protected:
     DynamicJsonDocument metaDoc;
     static const size_t META_DOC_SIZE = 2048; // Add constant for size
     bool metaDocValid = false;
+
+    // Add with other private members
+    RTCManager _rtc;
+    bool _isRTCInitialized;
+    bool _isSDInitialized;
+    // Consider adding other component initialization flags:
+    // bool _isBLEInitialized;
+    // etc.
 };
 
 // Global pointer declaration

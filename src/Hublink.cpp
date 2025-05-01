@@ -17,7 +17,9 @@ Hublink::Hublink(uint8_t chipSelect, uint32_t clockFrequency)
       allFilesSent(false),
       watchdogTimer(0),
       sendFilenames(false),
-      metaDoc(META_DOC_SIZE) // Initialize with capacity
+      metaDoc(META_DOC_SIZE), // Initialize with capacity
+      _isRTCInitialized(false),
+      _isSDInitialized(false)
 {
     g_hublink = this; // Set the global pointer
 }
@@ -49,8 +51,19 @@ bool Hublink::begin(String advName)
     // Set CPU frequency to minimum required for radio operation
     setCPUFrequency(CPUFrequency::MHz_80);
 
+    // Initialize RTC
+    _isRTCInitialized = _rtc.begin();
+    if (!_isRTCInitialized)
+    {
+        debug(DebugByte::HUBLINK_ERROR);
+        Serial.println("✗ RTC.");
+        return false;
+    }
+    Serial.println("✓ RTC.");
+
     // Initialize SD
-    if (!beginSD())
+    _isSDInitialized = beginSD();
+    if (!_isSDInitialized)
     {
         debug(DebugByte::HUBLINK_SD_BEGIN_ERROR);
         Serial.println("✗ SD Card.");
@@ -438,7 +451,8 @@ void Hublink::cleanupCallbacks()
 // Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
 bool Hublink::beginSD()
 {
-    if (SD.begin(cs, SPI, clkFreq))
+    _isSDInitialized = SD.begin(cs, SPI, clkFreq);
+    if (_isSDInitialized)
     {
         SD.exists("/x.txt"); // trick to enter SD idle state
         debug(DebugByte::HUBLINK_SD_CONNECT);
