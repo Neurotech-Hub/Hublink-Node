@@ -257,10 +257,10 @@ void loop()
 
         // Add magnetic sensor status
         Serial.printf("Magnetic Sensor: %s\n",
-                      digitalRead(MAG_SENSOR_PIN) ? "DETECTED" : "NOT DETECTED");
+                      digitalRead(MAG_SENSOR_PIN) ? "NOT DETECTED" : "DETECTED");
 
         Serial.printf("USB Power: %s\n",
-                      digitalRead(USB_SENSE_PIN) ? "CONNECTED" : "DISCONNECTED");
+                      digitalRead(USB_SENSE_PIN) ? "DISCONNECTED" : "CONNECTED");
 
         // Only toggle red LED now (blue LED follows USB sense)
         digitalWrite(LED_RED_PIN, !digitalRead(LED_RED_PIN));
