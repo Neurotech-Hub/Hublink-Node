@@ -30,6 +30,51 @@ Example:
 hublink.sleep(5);
 ```
 
+### Initialization Process
+The `begin()` function initializes the Hublink node with the following sequence:
+
+1. **Debug Setup** (if enabled)
+   - Initializes Serial1 at 115200 baud for debug output
+   - Logs wake-up reason (timer, reset, or other)
+
+2. **CPU Configuration**
+   - Sets CPU frequency to 80MHz (minimum required for radio operation)
+
+3. **SD Card Initialization**
+   - Attempts to initialize SD card with specified chip select and clock frequency
+   - Returns false if SD card initialization fails
+
+4. **BLE Configuration**
+   - Sets advertising name from parameter
+   - Initializes default values:
+     - `advertise_every`: 300 seconds (5 minutes)
+     - `advertise_for`: 30 seconds
+     - `disable`: false
+     - `upload_path`: "/FED"
+     - `append_path`: "subject:id/experimenter:name"
+     - `try_reconnect`: true
+     - `reconnect_attempts`: 3
+     - `reconnect_every`: 30 seconds
+
+5. **Meta.json Processing**
+   - Reads and parses meta.json from SD card
+   - Updates configuration values if valid JSON is found
+   - Maintains default values if file is missing or invalid
+
+6. **State Initialization**
+   - Sets lastHublinkMillis for timing control
+   - Returns true if all initialization steps complete successfully
+
+Example:
+```cpp
+Hublink hublink(SD_CS_PIN, SD_CLK_FREQ);
+if (hublink.begin("HUBLINK")) {
+    Serial.println("Hublink initialized successfully");
+} else {
+    Serial.println("Hublink initialization failed");
+}
+```
+
 ## Installation
 1. Download the Hublink-Node library in Arduino IDE. Alternatively (but not recommended), clone the [GitHub repository](https://github.com/Neurotech-Hub/HublinkNode).
 4. Ensure the dependencies are installed from Arduino IDE:
