@@ -14,15 +14,41 @@
 #include <string>
 #include <atomic>
 
-// BLE UUIDs
+#define HUBLINK_FIRMWARE_VERSION "1.0.6" // Sync with library.properties
+
+// BLE UUIDs - Custom service for Hublink data transfer protocol
+//
+// SERVICE_UUID: Main service that contains all Hublink characteristics
+// - Acts as the container for all data transfer functionality
+// - Clients discover this service to access Hublink features
 #define SERVICE_UUID "57617368-5501-0001-8000-00805f9b34fb"
-// READ/WRITE/INDICATE
+
+// CHARACTERISTIC_UUID_FILENAME: File selection and listing characteristic
+// - READ: Client can read to get available filenames from SD card
+// - WRITE: Client writes filename to request file transfer
+// - INDICATE: Server indicates filename chunks during file listing
+// - Used for: File discovery, file selection, and filename transfer
 #define CHARACTERISTIC_UUID_FILENAME "57617368-5502-0001-8000-00805f9b34fb"
-// READ/INDICATE
+
+// CHARACTERISTIC_UUID_FILETRANSFER: File content transfer characteristic
+// - READ: Client can read file content (though primarily uses INDICATE)
+// - INDICATE: Server indicates file data chunks during transfer
+// - Used for: Streaming file content from ESP32 SD card to client
+// - Sends: File data in MTU-sized chunks, "EOF" when complete, "NFF" if file not found
 #define CHARACTERISTIC_UUID_FILETRANSFER "57617368-5503-0001-8000-00805f9b34fb"
-// WRITE
+
+// CHARACTERISTIC_UUID_GATEWAY: Configuration and control characteristic
+// - WRITE: Client writes JSON commands to control ESP32 behavior
+// - Handles: Timestamp sync, file listing requests, meta.json updates, watchdog settings
+// - Payload format: {"timestamp": 1234567890, "sendFilenames": true, "watchdogTimeoutMs": 10000}
+// - Also handles: meta.json chunked transfers with {"metaJsonId": 1, "metaJsonData": "..."}
 #define CHARACTERISTIC_UUID_GATEWAY "57617368-5504-0001-8000-00805f9b34fb"
-// READ
+
+// CHARACTERISTIC_UUID_NODE: Node information and status characteristic
+// - READ: Client reads to get node configuration and status
+// - Contains: Upload path configuration as JSON string
+// - Format: {"upload_path": "/path/to/upload/directory"}
+// - Used for: Client to understand node's file organization structure
 #define CHARACTERISTIC_UUID_NODE "57617368-5505-0001-8000-00805f9b34fb"
 
 // File paths
