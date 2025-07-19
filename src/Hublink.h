@@ -210,6 +210,8 @@ public:
 
     // Public methods
     void setTimestampCallback(TimestampCallback callback);
+    void setBatteryLevel(uint8_t level);
+    uint8_t getBatteryLevel() const;
     void addValidExtension(const String &extension);
     void clearValidExtensions();
     void addValidExtensions(const std::vector<String> &extensions);
@@ -309,7 +311,8 @@ protected:
     // Node content handling
     String metaJson;
     String configuredAdvName = "";
-    String upload_path_json = ""; // JSON-encoded upload path for BLE characteristic
+    String deviceId = "";     // Device ID from meta.json
+    uint8_t batteryLevel = 0; // User settable battery level
 
     // Helper functions
     void resetBLEState();
@@ -367,6 +370,9 @@ protected:
 
     // Helper function to extract nested JSON values
     String getNestedJsonValue(const JsonDocument &doc, const String &path);
+
+    // Helper function to build node characteristic JSON
+    String buildNodeCharacteristicJson();
 
     // Path processing helpers
     String sanitizePath(const String &path);
