@@ -29,7 +29,8 @@ void setup()
 void loop()
 {
   digitalWrite(LED_BUILTIN, HIGH);
-  hublink.setBatteryLevel(100); // send level to gateway
+  hublink.setAlert("test");     // send alert to gateway, clears after sync
+  hublink.setBatteryLevel(100); // send battery level to gateway
   hublink.sync();               // only blocks when ready
   digitalWrite(LED_BUILTIN, LOW);
   // hublink.sleep(1000); // optional light sleep
