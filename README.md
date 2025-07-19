@@ -30,6 +30,33 @@ Example:
 hublink.sleep(5);
 ```
 
+### setBatteryLevel(uint8_t level)
+Sets the battery level for the node characteristic. Range 0-255 (0 indicates not set).
+- `level`: Battery level (0-255)
+
+Example:
+```cpp
+hublink.setBatteryLevel(85);  // Set to 85%
+```
+
+### setAlert(const String &alert)
+Sets an alert message that will be included in the node characteristic during the next sync cycle. The alert is automatically cleared after the sync completes.
+- `alert`: Alert message string
+
+Example:
+```cpp
+hublink.setAlert("Low battery warning!");
+hublink.sync();  // Alert gets sent and then automatically cleared
+```
+
+### getBatteryLevel() const
+Returns the current battery level setting.
+- Returns: uint8_t battery level (0-255)
+
+### getAlert() const
+Returns the current alert message.
+- Returns: String alert message
+
 ### Initialization Process
 The `begin()` function initializes the Hublink node with the following sequence:
 
@@ -128,6 +155,9 @@ The library accepts configuration via a file on the SD card in JSON format.
   "experimenter": {
       "name": "john_doe"
   },
+  "device": {
+      "id": "046"
+  },
   "fed": {
       "program": "Classic",
       "program_options": [
@@ -142,14 +172,15 @@ The library accepts configuration via a file on the SD card in JSON format.
 
 Where,
 - `advertise`: Sets custom BLE advertising name
-- `interval_every`: Seconds between advertising periods
-- `interval_for`: Duration of each advertising period in seconds
+- `advertise_every`: Seconds between advertising periods
+- `advertise_for`: Duration of each advertising period in seconds
 - `try_reconnect`: Enables/disables automatic reconnection attempts (default: true)
 - `reconnect_attempts`: Number of reconnection attempts if initial connection fails (default: 3)
 - `reconnect_every`: Seconds between reconnection attempts (default: 30)
 - `upload_path`: Base path for file uploads (e.g., "/FED")
 - `append_path`: Dynamic path segments using nested JSON values (e.g., "subject:id/experimenter:name")
 - `disable`: Enables/disables BLE functionality
+- `device.id`: Device identifier that appears in the node characteristic
 
 #### Path Construction
 The `append_path` field supports multiple nested JSON values separated by forward slashes. For example:
@@ -174,10 +205,52 @@ For example, if `experimenter:name` is missing or empty, the path would be `/FED
 
 Hublink uses [bblanchon/ArduinoJson](https://github.com/bblanchon/ArduinoJson) to parse the JSON file. There are a number of free JSON editors/visualizers (e.g., [JSON to Graph Converter](https://jsonviewer.tools/editor)).
 
+## BLE Characteristics
+
+The Hublink library exposes several BLE characteristics for communication:
+
+### Node Characteristic (READ)
+Provides node status and configuration information in JSON format:
+```json
+{
+  "upload_path": "/FED",
+  "firmware_version": "1.0.6",
+  "battery_level": 85,
+  "device_id": "046",
+  "alert": "Low battery warning!"
+}
+```
+
+- `upload_path`: Base path for file uploads
+- `firmware_version`: Current library version
+- `battery_level`: Battery level (0-255, 0 = not set)
+- `device_id`: Device identifier from meta.json
+- `alert`: Alert message (only present if set)
+
+### Gateway Characteristic (WRITE)
+Accepts JSON commands from the client:
+```json
+{
+  "timestamp": 1234567890,
+  "sendFilenames": true,
+  "watchdogTimeoutMs": 10000,
+  "metaJsonId": 1,
+  "metaJsonData": "..."
+}
+```
+
+### Filename Characteristic (READ/WRITE/INDICATE)
+- **WRITE**: Client writes filename to request file transfer
+- **INDICATE**: Server indicates available filenames during listing
+
+### File Transfer Characteristic (READ/INDICATE)
+- **INDICATE**: Server streams file content in chunks
+- Sends "EOF" when complete, "NFF" if file not found
+
 ## Coming Soon
 
 ### Hublink Editor App
-The Hublinke Node library supports secure transfer of meta.json configuration between client (mobile app) and ESP32:
+The Hublink Node library supports secure transfer of meta.json configuration between client (mobile app) and ESP32:
 
 **Reading meta.json (ESP32 → Client)**
 1. Client requests meta.json content

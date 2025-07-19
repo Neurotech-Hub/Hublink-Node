@@ -212,6 +212,8 @@ public:
     void setTimestampCallback(TimestampCallback callback);
     void setBatteryLevel(uint8_t level);
     uint8_t getBatteryLevel() const;
+    void setAlert(const String &alert);
+    String getAlert() const;
     void addValidExtension(const String &extension);
     void clearValidExtensions();
     void addValidExtensions(const std::vector<String> &extensions);
@@ -313,6 +315,7 @@ protected:
     String configuredAdvName = "";
     String deviceId = "";     // Device ID from meta.json
     uint8_t batteryLevel = 0; // User settable battery level
+    String alert = "";        // User settable alert message
 
     // Helper functions
     void resetBLEState();

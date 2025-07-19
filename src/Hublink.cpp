@@ -891,6 +891,9 @@ bool Hublink::doBLE()
     debug(DebugByte::HUBLINK_BLE_ADV_STOP);
     stopAdvertising();
 
+    // Reset alert after sync is complete
+    alert = "";
+
     if (metaJsonUpdated)
     {
         debug(DebugByte::HUBLINK_META_JSON_READ);
@@ -1082,6 +1085,11 @@ String Hublink::buildNodeCharacteristicJson()
         doc["device_id"] = deviceId;
     }
 
+    if (alert.length() > 0)
+    {
+        doc["alert"] = alert;
+    }
+
     String jsonString;
     serializeJson(doc, jsonString);
 
@@ -1126,6 +1134,16 @@ void Hublink::setBatteryLevel(uint8_t level)
 uint8_t Hublink::getBatteryLevel() const
 {
     return batteryLevel;
+}
+
+void Hublink::setAlert(const String &alert)
+{
+    this->alert = alert;
+}
+
+String Hublink::getAlert() const
+{
+    return alert;
 }
 
 void Hublink::handleTimestamp(const String &timestamp)
