@@ -7,6 +7,7 @@
 #include <NimBLECharacteristic.h>
 #include <SD.h>
 #include <SPI.h>
+#include <WiFi.h>
 #include <esp_sleep.h>
 #include <ArduinoJson.h>
 #include "esp_system.h"
