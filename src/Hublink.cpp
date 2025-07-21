@@ -73,6 +73,10 @@ bool Hublink::begin(String advName)
     debug(DebugByte::HUBLINK_META_JSON_READ);
     readMetaJson();
 
+    // Print device MAC address (same as BLE MAC on ESP32)
+    String mac = WiFi.macAddress();
+    Serial.printf("Device MAC: %s\n", mac.c_str());
+
     lastHublinkMillis = millis();
     debug(DebugByte::HUBLINK_END_FUNC);
     return true;
@@ -311,9 +315,12 @@ String Hublink::readMetaJson()
         Serial.printf("BLE disable flag set to: %s\n", disable ? "true" : "false");
     }
 
-    // Simplify upload_path JSON creation
-    upload_path_json = "{\"upload_path\":\"" + upload_path + "\"}";
-    Serial.printf("Encoded upload path JSON: %s\n", upload_path_json.c_str());
+    // Parse device ID from meta.json
+    if (doc.containsKey("device") && doc["device"].containsKey("id"))
+    {
+        deviceId = doc["device"]["id"].as<String>();
+        Serial.printf("Device ID set from meta.json: %s\n", deviceId.c_str());
+    }
 
     return content;
 }
@@ -371,8 +378,9 @@ void Hublink::startAdvertising()
         CHARACTERISTIC_UUID_NODE,
         NIMBLE_PROPERTY::READ);
 
-    pNodeCharacteristic->setValue(upload_path_json.c_str());
-    Serial.printf("Node characteristic value: %s\n", upload_path_json.c_str());
+    String nodeJson = buildNodeCharacteristicJson();
+    pNodeCharacteristic->setValue(nodeJson.c_str());
+    Serial.printf("Node characteristic value: %s\n", nodeJson.c_str());
 
     debug(DebugByte::HUBLINK_BLE_START_SERVICE, true);
     pService->start();
@@ -621,6 +629,9 @@ void Hublink::resetBLEState()
     didConnect = false;
 
     // Note: Do NOT reset _timestampCallback here
+
+    // Reset battery level to default
+    batteryLevel = 0;
 
     // Meta.json state
     if (metaJsonTransferInProgress)
@@ -884,6 +895,9 @@ bool Hublink::doBLE()
     debug(DebugByte::HUBLINK_BLE_ADV_STOP);
     stopAdvertising();
 
+    // Reset alert after sync is complete
+    alert = "";
+
     if (metaJsonUpdated)
     {
         debug(DebugByte::HUBLINK_META_JSON_READ);
@@ -1062,6 +1076,31 @@ bool Hublink::sync(uint32_t temporaryConnectFor)
     return connectionSuccess;
 }
 
+String Hublink::buildNodeCharacteristicJson()
+{
+    DynamicJsonDocument doc(512);
+
+    doc["upload_path"] = upload_path;
+    doc["firmware_version"] = HUBLINK_FIRMWARE_VERSION;
+    doc["battery_level"] = batteryLevel;
+
+    if (deviceId.length() > 0)
+    {
+        doc["device_id"] = deviceId;
+    }
+
+    if (alert.length() > 0)
+    {
+        doc["alert"] = alert;
+    }
+
+    String jsonString;
+    serializeJson(doc, jsonString);
+
+    Serial.printf("Node characteristic JSON: %s\n", jsonString.c_str());
+    return jsonString;
+}
+
 void Hublink::printMemStats(const char *prefix)
 {
     static uint32_t lastMinFreeHeap = 0;
@@ -1089,6 +1128,26 @@ void Hublink::printMemStats(const char *prefix)
 void Hublink::setTimestampCallback(TimestampCallback callback)
 {
     _timestampCallback = callback;
+}
+
+void Hublink::setBatteryLevel(uint8_t level)
+{
+    batteryLevel = level;
+}
+
+uint8_t Hublink::getBatteryLevel() const
+{
+    return batteryLevel;
+}
+
+void Hublink::setAlert(const String &alert)
+{
+    this->alert = alert;
+}
+
+String Hublink::getAlert() const
+{
+    return alert;
 }
 
 void Hublink::handleTimestamp(const String &timestamp)
