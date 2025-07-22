@@ -73,9 +73,11 @@ bool Hublink::begin(String advName)
     debug(DebugByte::HUBLINK_META_JSON_READ);
     readMetaJson();
 
-    // Print device MAC address (same as BLE MAC on ESP32)
-    String mac = WiFi.macAddress();
-    Serial.printf("Device MAC: %s\n", mac.c_str());
+    // Get device MAC address (same as BLE MAC on ESP32)
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_BT); // Get Bluetooth MAC address
+    Serial.printf("Device MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     lastHublinkMillis = millis();
     debug(DebugByte::HUBLINK_END_FUNC);

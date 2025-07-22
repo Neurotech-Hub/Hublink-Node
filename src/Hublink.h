@@ -5,12 +5,12 @@
 #include <NimBLEServer.h>
 #include <NimBLEUtils.h>
 #include <NimBLECharacteristic.h>
+#include <esp_system.h>
+#include <esp_mac.h>
 #include <SD.h>
 #include <SPI.h>
-#include <WiFi.h>
 #include <esp_sleep.h>
 #include <ArduinoJson.h>
-#include "esp_system.h"
 #include <vector>
 #include <string>
 #include <atomic>
