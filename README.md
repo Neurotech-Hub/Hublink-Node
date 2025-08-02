@@ -205,12 +205,14 @@ For example, if `experimenter:name` is missing or empty, the path would be `/FED
 
 Hublink uses [bblanchon/ArduinoJson](https://github.com/bblanchon/ArduinoJson) to parse the JSON file. There are a number of free JSON editors/visualizers (e.g., [JSON to Graph Converter](https://jsonviewer.tools/editor)).
 
-## BLE Characteristics
+## BLE Characteristics & Protocol
 
-The Hublink library exposes several BLE characteristics for communication:
+The Hublink library implements a custom BLE service with four characteristics for file transfer and device management. All characteristics use the service UUID: `57617368-5501-0001-8000-00805f9b34fb`
 
-### Node Characteristic (READ)
-Provides node status and configuration information in JSON format:
+### 1. Node Characteristic (READ)
+**UUID**: `57617368-5505-0001-8000-00805f9b34fb`
+
+Provides device status and configuration information in JSON format:
 ```json
 {
   "upload_path": "/FED",
@@ -221,31 +223,125 @@ Provides node status and configuration information in JSON format:
 }
 ```
 
-- `upload_path`: Base path for file uploads
-- `firmware_version`: Current library version
-- `battery_level`: Battery level (0-255, 0 = not set)
-- `device_id`: Device identifier from meta.json
-- `alert`: Alert message (only present if set)
+**Fields**:
+- `upload_path` (string): Base path for file uploads, configured via meta.json
+- `firmware_version` (string): Current library version (always present)
+- `battery_level` (number): Battery level 0-255 (0 = not set, only present if > 0)
+- `device_id` (string): Device identifier from meta.json (only present if configured)
+- `alert` (string): Alert message (only present if set by user, auto-clears after sync)
 
-### Gateway Characteristic (WRITE)
-Accepts JSON commands from the client:
+**Usage**: Read this characteristic after connection to get device information and status.
+
+### 2. Gateway Characteristic (WRITE)
+**UUID**: `57617368-5504-0001-8000-00805f9b34fb`
+
+Accepts JSON commands to control device behavior. Multiple commands can be sent in a single JSON object:
+
 ```json
 {
   "timestamp": 1234567890,
   "sendFilenames": true,
   "watchdogTimeoutMs": 10000,
   "metaJsonId": 1,
-  "metaJsonData": "..."
+  "metaJsonData": "{\"hublink\":{\"advertise\":\"HUBLINK\"}}"
 }
 ```
 
-### Filename Characteristic (READ/WRITE/INDICATE)
-- **WRITE**: Client writes filename to request file transfer
-- **INDICATE**: Server indicates available filenames during listing
+**Commands**:
+- `timestamp` (number): Unix timestamp for device synchronization
+- `sendFilenames` (boolean): Triggers file listing process when true
+- `watchdogTimeoutMs` (number): Sets connection timeout in milliseconds (default: 10000)
+- `metaJsonId` + `metaJsonData` (pair): For meta.json updates (see Meta.json Transfer section)
 
-### File Transfer Characteristic (READ/INDICATE)
-- **INDICATE**: Server streams file content in chunks
-- Sends "EOF" when complete, "NFF" if file not found
+**Usage**: Write JSON commands to control device behavior. Device responds via callbacks.
+
+### 3. Filename Characteristic (READ/WRITE/INDICATE)
+**UUID**: `57617368-5502-0001-8000-00805f9b34fb`
+
+**WRITE**: Send filename to request file transfer
+```
+"data.txt"
+```
+
+**INDICATE**: Receives file listing or transfer status
+- **File listing format**: `"filename1.txt|1234;filename2.csv|5678;EOF"`
+  - Each file: `"filename|filesize"`
+  - Separator: `;`
+  - End marker: `"EOF"`
+- **Transfer status**: `"NFF"` (No File Found) if requested file doesn't exist
+
+**Usage**: 
+1. Write filename to request transfer
+2. Subscribe to indications for file listing or status updates
+
+### 4. File Transfer Characteristic (READ/INDICATE)
+**UUID**: `57617368-5503-0001-8000-00805f9b34fb`
+
+**INDICATE**: Receives file content in chunks
+- **Data chunks**: Raw file bytes (MTU-sized, typically 512 bytes)
+- **End marker**: `"EOF"` when transfer complete
+- **Error marker**: `"NFF"` if file not found
+
+**Usage**: Subscribe to indications to receive file content. Monitor for "EOF" or "NFF" markers.
+
+## Connection Protocol
+
+### 1. Device Discovery
+- **Service UUID**: `57617368-5501-0001-8000-00805f9b34fb`
+- **Advertising Name**: Configurable via meta.json (default: "HUBLINK")
+- **MTU Size**: Device negotiates to 515 bytes (512 + 3 byte header)
+
+### 2. Connection Sequence
+1. **Connect** to device
+2. **Read Node Characteristic** to get device info
+3. **Subscribe to indications** on Filename and File Transfer characteristics
+4. **Write to Gateway Characteristic** to send commands
+
+### 3. File Transfer Workflow
+
+#### File Listing
+1. Write `{"sendFilenames": true}` to Gateway Characteristic
+2. Receive file list via Filename Characteristic indications
+3. Parse `"filename|size;filename2|size2;EOF"` format
+
+#### File Download
+1. Write filename to Filename Characteristic
+2. Receive file content via File Transfer Characteristic indications
+3. Monitor for "EOF" or "NFF" markers
+
+### 4. Meta.json Transfer Protocol
+
+#### Reading meta.json
+1. Read Node Characteristic (contains current configuration)
+
+#### Writing meta.json
+1. Send chunks via Gateway Characteristic:
+   ```json
+   {"metaJsonId": 1, "metaJsonData": "{\"hublink\":{\"advertise\":\"HUBLINK\"}}"}
+   {"metaJsonId": 2, "metaJsonData": "{\"device\":{\"id\":\"046\"}}"}
+   ```
+2. Send completion marker:
+   ```json
+   {"metaJsonId": 0, "metaJsonData": "EOF"}
+   ```
+
+**Chunking Rules**:
+- Sequential IDs starting from 1
+- Device validates JSON structure on completion
+- Timeout: 5 seconds between chunks
+- Automatic cleanup on timeout or error
+
+### 5. Error Handling
+- **Connection timeout**: 10 seconds (configurable via `watchdogTimeoutMs`)
+- **File not found**: Device sends "NFF" via Filename Characteristic
+- **Transfer errors**: Device disconnects and resets state
+- **Meta.json errors**: Device reverts to previous configuration
+
+### 6. State Management
+- **Alert messages**: Auto-clear after each sync cycle
+- **Battery level**: Persists until next update
+- **File handles**: Automatically closed on disconnect
+- **BLE state**: Reset between advertising cycles
 
 ## Coming Soon
 
