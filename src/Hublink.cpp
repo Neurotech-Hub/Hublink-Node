@@ -604,7 +604,7 @@ void Hublink::onConnect()
 
     // Now we can properly update connection parameters in correct order:
     // connHandle, minInterval, maxInterval, latency, timeout
-    pServer->updateConnParams(connHandle, 6, 8, 0, 100);
+    pServer->updateConnParams(connHandle, 12, 16, 0, 100);
     NimBLEDevice::setMTU(NEGOTIATE_MTU_SIZE);
 }
 
