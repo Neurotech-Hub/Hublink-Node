@@ -46,8 +46,17 @@ bool Hublink::begin(String advName)
         break;
     }
 
-    // Set CPU frequency to minimum required for radio operation
-    setCPUFrequency(CPUFrequency::MHz_80);
+    // Only set to 80MHz if current frequency is below minimum
+    uint32_t currentFreq = getCpuFrequencyMhz();
+    if (currentFreq < 80)
+    {
+        setCPUFrequency(CPUFrequency::MHz_80);
+        Serial.printf("CPU frequency increased from %dMHz to 80MHz for radio stability\n", currentFreq);
+    }
+    else
+    {
+        Serial.printf("CPU frequency maintained at %dMHz (user preference)\n", currentFreq);
+    }
 
     // Initialize SD
     if (!beginSD())
@@ -80,6 +89,7 @@ bool Hublink::begin(String advName)
                   mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     lastHublinkMillis = millis();
+    initialized = true;
     debug(DebugByte::HUBLINK_END_FUNC);
     return true;
 }
@@ -927,6 +937,12 @@ bool Hublink::doBLE()
  */
 bool Hublink::sync(uint32_t temporaryConnectFor)
 {
+    if (!initialized)
+    {
+        Serial.println("Error: Hublink not initialized. Call begin() first.");
+        return false;
+    }
+
     debug(DebugByte::HUBLINK_BLE_SYNC_START);
     uint32_t currentTime = millis();
     bool connectionSuccess = false;

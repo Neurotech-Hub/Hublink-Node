@@ -194,6 +194,7 @@ public:
     bool deviceConnected = false;
     bool sendFilenames = false;
     std::vector<String> validExtensions = {".txt", ".csv", ".log", ".json"};
+    bool initialized = false;
 
     // BLE configuration
     String advertise;
