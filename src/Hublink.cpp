@@ -456,17 +456,26 @@ void Hublink::cleanupCallbacks()
     }
 }
 
-// Use SD.begin(cs, SPI, clkFreq) whenever SD functions are needed in this way:
+// SD.begin(cs, SPI, clkFreq) only if not already mounted (e.g. sketch initialized SD first).
 bool Hublink::beginSD()
 {
-    if (SD.begin(cs, SPI, clkFreq))
+    if (SD.cardType() == CARD_NONE)
     {
-        SD.exists("/x.txt"); // trick to enter SD idle state
-        debug(DebugByte::HUBLINK_SD_CONNECT);
-        return true;
+        if (!SD.begin(cs, SPI, clkFreq))
+        {
+            debug(DebugByte::HUBLINK_SD_ERROR);
+            return false;
+        }
     }
-    debug(DebugByte::HUBLINK_SD_ERROR);
-    return false;
+    // trick to enter SD idle state
+    File r = SD.open("/", FILE_READ);
+    if (!r)
+    {
+        return false;
+    }
+    r.close();
+    debug(DebugByte::HUBLINK_SD_CONNECT);
+    return true;
 }
 
 void Hublink::sendAvailableFilenames()
