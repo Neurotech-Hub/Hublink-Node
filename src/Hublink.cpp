@@ -67,7 +67,6 @@ bool Hublink::begin(String advName)
     }
     Serial.println("✓ SD Card.");
 
-    advertise = advName;
     // Reset to defaults
     advertise_every = DEFAULT_ADVERTISE_EVERY;
     advertise_for = DEFAULT_ADVERTISE_FOR;
@@ -81,6 +80,8 @@ bool Hublink::begin(String advName)
     // Read meta.json, store in doc, set hublink variables
     debug(DebugByte::HUBLINK_META_JSON_READ);
     readMetaJson();
+    // begin(advName) overrides hublink.advertise from meta.json
+    advertise = advName;
 
     // Get device MAC address (same as BLE MAC on ESP32)
     uint8_t mac[6];
@@ -250,8 +251,8 @@ String Hublink::readMetaJson()
     JsonObject hublink = doc["hublink"];
     String content = "";
 
-    // Validate fields before access
-    if (hublink.containsKey("advertise"))
+    // Validate fields before access (only before begin() finishes; afterward begin(advName) owns advertise)
+    if (hublink.containsKey("advertise") && !initialized)
     {
         advertise = hublink["advertise"].as<String>();
     }

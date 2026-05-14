@@ -171,7 +171,7 @@ public:
     bool doDebug = false;
     void debug(DebugByte byte, bool doDelay = true);
 
-    // BLE control
+    // BLE control (advName is used for BLE device / scan name and overrides hublink.advertise in meta.json)
     bool begin(String advName = "HUBLINK");
     bool beginSD();
     void startAdvertising();
