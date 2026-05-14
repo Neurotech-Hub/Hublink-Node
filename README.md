@@ -384,7 +384,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Consider testing at begin(), detecting wake from sleep, or sync():
 ```cpp
 // Ensure clean BLE state before starting
-if (NimBLEDevice::getInitialized()) {
+if (NimBLEDevice::isInitialized()) {
     NimBLEDevice::deinit(true);
     delay(100);
 }

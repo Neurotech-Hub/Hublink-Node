@@ -289,12 +289,12 @@ public:
 
 protected:
     // BLE characteristics
-    NimBLECharacteristic *pFilenameCharacteristic;
-    NimBLECharacteristic *pFileTransferCharacteristic;
-    NimBLECharacteristic *pConfigCharacteristic;
-    NimBLECharacteristic *pNodeCharacteristic;
-    NimBLEServer *pServer;
-    NimBLEService *pService;
+    NimBLECharacteristic *pFilenameCharacteristic = nullptr;
+    NimBLECharacteristic *pFileTransferCharacteristic = nullptr;
+    NimBLECharacteristic *pConfigCharacteristic = nullptr;
+    NimBLECharacteristic *pNodeCharacteristic = nullptr;
+    NimBLEServer *pServer = nullptr;
+    NimBLEService *pService = nullptr;
 
     // Helper function for reliable indications
     bool sendIndication(NimBLECharacteristic *pChar, const uint8_t *data, size_t length);
@@ -364,6 +364,8 @@ protected:
     // Critical: Must be called before NimBLE deinit to prevent crashes
     // Removes all callbacks to prevent dangling references during deinit
     void cleanupCallbacks();
+    /** Null out NimBLE object pointers after deinit or failed setup. */
+    void clearNimbleBlePointers();
 
     // Default values for BLE configuration
     static constexpr uint32_t DEFAULT_ADVERTISE_EVERY = 300; // 5 minutes

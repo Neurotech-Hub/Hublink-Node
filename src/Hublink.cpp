@@ -346,6 +346,16 @@ void Hublink::setCPUFrequency(CPUFrequency freq_mhz)
 void Hublink::startAdvertising()
 {
     debug(DebugByte::HUBLINK_BLE_INIT_START, true);
+
+    if (NimBLEDevice::isInitialized())
+    {
+        Serial.println("TEMP Hublink startAdvertising: NimBLE already initialized, deinit before init");
+        NimBLEDevice::deinit(true);
+        delay(100);
+        clearNimbleBlePointers();
+    }
+
+    Serial.println("TEMP Hublink startAdvertising: NimBLEDevice::init");
     NimBLEDevice::init(advertise.c_str());
 
     debug(DebugByte::HUBLINK_BLE_INIT_POWER, true);
@@ -358,7 +368,14 @@ void Hublink::startAdvertising()
     {
         debug(DebugByte::HUBLINK_BLE_ERROR);
         Serial.println("Failed to create server!");
+        Serial.println("TEMP Hublink startAdvertising: createServer failed, deinit and clear pointers");
         cleanupCallbacks();
+        if (NimBLEDevice::isInitialized())
+        {
+            NimBLEDevice::deinit(true);
+            delay(100);
+        }
+        clearNimbleBlePointers();
         return;
     }
 
@@ -400,14 +417,27 @@ void Hublink::startAdvertising()
 
     debug(DebugByte::HUBLINK_BLE_ADV_CONFIG, true);
     NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
+    pAdvertising->clearData();
+    pAdvertising->enableScanResponse(true);
 
-    debug(DebugByte::HUBLINK_BLE_ADV_SET_UUID, true);
-    pAdvertising->addServiceUUID(SERVICE_UUID);
+    // Name in primary ADV so passive scanners see it; 128-bit UUID alone + name exceeds 31 bytes, so UUID goes in scan response.
+    NimBLEAdvertisementData advertisementData;
+    advertisementData.setFlags(BLE_HS_ADV_F_DISC_GEN);
+    advertisementData.setName(advertise.c_str());
+
+    NimBLEAdvertisementData scanResponseData;
+    scanResponseData.addServiceUUID(SERVICE_UUID);
 
     debug(DebugByte::HUBLINK_BLE_ADV_SET_NAME, true);
-    NimBLEAdvertisementData scanResponse;
-    scanResponse.setName(advertise.c_str());
-    pAdvertising->setScanResponseData(scanResponse);
+    if (!pAdvertising->setAdvertisementData(advertisementData))
+    {
+        Serial.println("Hublink: setAdvertisementData failed");
+    }
+    debug(DebugByte::HUBLINK_BLE_ADV_SET_UUID, true);
+    if (!pAdvertising->setScanResponseData(scanResponseData))
+    {
+        Serial.println("Hublink: setScanResponseData failed");
+    }
 
     debug(DebugByte::HUBLINK_BLE_ADV_START, true);
     pAdvertising->start();
@@ -415,28 +445,42 @@ void Hublink::startAdvertising()
 
 void Hublink::stopAdvertising()
 {
-    if (pServer != nullptr)
+    if (NimBLEDevice::isInitialized())
     {
-        // First disconnect any connected clients
-        if (pServer->getConnectedCount() > 0)
+        Serial.println("TEMP Hublink stopAdvertising: NimBLE initialized, stopping advertising");
+        if (pServer != nullptr)
         {
-            pServer->disconnect(0);
-            delay(50);
-        }
+            // First disconnect any connected clients
+            if (pServer->getConnectedCount() > 0)
+            {
+                pServer->disconnect(0);
+                delay(50);
+            }
 
-        cleanupCallbacks();
-        delay(20);
+            cleanupCallbacks();
+            delay(20);
+        }
 
         // Only use NimBLE
         NimBLEDevice::getAdvertising()->stop();
         delay(50);
     }
+    else
+    {
+        Serial.println("TEMP Hublink stopAdvertising: NimBLE not initialized, skip stop/deinit path prep");
+    }
 
     resetBLEState();
     delay(20);
 
-    NimBLEDevice::deinit(true);
-    delay(100);
+    if (NimBLEDevice::isInitialized())
+    {
+        Serial.println("TEMP Hublink stopAdvertising: deinit(true)");
+        NimBLEDevice::deinit(true);
+        delay(100);
+    }
+
+    clearNimbleBlePointers();
 }
 
 void Hublink::cleanupCallbacks()
@@ -454,6 +498,16 @@ void Hublink::cleanupCallbacks()
     {
         pConfigCharacteristic->setCallbacks(nullptr);
     }
+}
+
+void Hublink::clearNimbleBlePointers()
+{
+    pServer = nullptr;
+    pService = nullptr;
+    pFilenameCharacteristic = nullptr;
+    pFileTransferCharacteristic = nullptr;
+    pConfigCharacteristic = nullptr;
+    pNodeCharacteristic = nullptr;
 }
 
 // SD.begin(cs, SPI, clkFreq) only if not already mounted (e.g. sketch initialized SD first).
