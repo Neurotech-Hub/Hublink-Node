@@ -607,7 +607,6 @@ void Hublink::onConnect()
     deviceConnected = true;
     didConnect = true;
     watchdogTimer = millis();
-    watchdogTimeoutMs = 10000; // Reset to default on each new connection
 
     // Get the connection handle from the first connected client
     uint16_t connHandle = pServer->getPeerInfo(0).getConnHandle();

@@ -232,6 +232,9 @@ public:
     uint8_t reconnect_attempts = DEFAULT_RECONNECT_ATTEMPTS;
     uint32_t reconnect_every = DEFAULT_RECONNECT_EVERY;
 
+    /** Max idle time (ms) while connected before forcing disconnect; increase for slow/manual transfer flows. Gateway JSON may still override via watchdogTimeoutMs. */
+    uint32_t watchdogTimeoutMs = 10000;
+
     /**
      * Check if a key exists in meta.json
      *
@@ -306,7 +309,6 @@ protected:
     uint16_t mtuSize = 20;
     const uint16_t NEGOTIATE_MTU_SIZE = 515; // 512 + MTU_HEADER_SIZE
     const uint16_t MTU_HEADER_SIZE = 3;
-    uint32_t watchdogTimeoutMs = 10000; // Default 10 seconds
 
     // SD card configuration
     uint8_t cs;
